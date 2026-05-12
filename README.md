@@ -21,6 +21,120 @@ Or download **installers**, including **MacOS Apple Silicon**, [here](https://bu
 
 Please cite the published paper if you used aTrain for your research: [Take the aTrain. Introducing an Interface for the Accessible Transcription of Interviews.](https://www.sciencedirect.com/science/article/pii/S2214635024000066)
 
+## Command-Line Interface (CLI)
+
+aTrain also ships a Typer-based CLI for scripted and agent-driven transcription workflows. The CLI uses the same transcription engine and local model files as the GUI.
+
+### Entrypoints
+
+Use one of these entrypoints depending on how aTrain is installed:
+
+```powershell
+aTrain-cli --help
+aTrain-cli.exe --help
+python -m aTrain.cli --help
+```
+
+For packaged Windows builds, `aTrain-cli.exe` is placed next to `aTrain.exe` and shares the same `_internal` directory and model storage.
+
+### Agent Contract
+
+- The CLI does not open the GUI.
+- `transcribe` never uploads audio or transcript content.
+- `transcribe` expects required models to be present before it starts. It does not silently download missing models.
+- `init` may access Hugging Face to download models.
+- Use absolute paths for `INPUT` and output directories when running from an agent or automation.
+- The default output directory is `./atrain-output` relative to the current working directory.
+- Exit code `0` means all selected inputs succeeded.
+- Exit code `1` means a batch had both successes and failures.
+- Exit code `2` means validation failed, all selected inputs failed, or no input succeeded.
+
+### Transcribe
+
+```powershell
+aTrain-cli transcribe INPUT [OPTIONS]
+```
+
+`INPUT` can be a single audio/video file or a directory. Directory input scans only the top-level directory by default; pass `--recursive` to include subdirectories.
+
+| Option | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `--model` | string | `large-v3` | Whisper model name. |
+| `--language` | string | `auto-detect` | Language code or `auto-detect`. |
+| `--speaker-detection / --no-speaker-detection` | bool | `True` | Enables pyannote speaker detection. |
+| `--speaker-count` | integer | `0` | `0` means auto-detect speaker count. |
+| `--device` | `cpu`, `gpu` | `gpu` | Hardware backend. |
+| `--compute-type` | `int8`, `float16`, `float32` | `float32` | Model compute precision. |
+| `--temperature` | float | `None` | Optional sampling temperature, `0.0` to `1.0`. |
+| `--prompt` | string | `None` | Optional initial prompt for Whisper. |
+| `--cpu-threads` | integer | `aTrain_core.globals.DEFAULT_CPU_THREADS` | `0` means automatic CPU thread selection. |
+| `--recursive / --no-recursive` | bool | `False` | Applies only when `INPUT` is a directory. |
+| `--formats` | CSV | `txt,timestamps` | Allowed values: `json`, `txt`, `timestamps`, `maxqda`, `srt`. |
+| `--output` | directory | `./atrain-output` | Fallback output directory for all selected formats. |
+| `--json-output` | directory | fallback to `--output` | Dedicated directory for JSON output. |
+| `--txt-output` | directory | fallback to `--output` | Dedicated directory for plain text output. |
+| `--timestamps-output` | directory | fallback to `--output` | Dedicated directory for timestamped text output. |
+| `--maxqda-output` | directory | fallback to `--output` | Dedicated directory for MAXQDA output. |
+| `--srt-output` | directory | fallback to `--output` | Dedicated directory for SRT output. |
+| `--overwrite / --no-overwrite` | bool | `True` | With `--no-overwrite`, existing target files cause an error. |
+
+### Output Contract
+
+Output filenames are derived from the input file stem. For an input file named `interview01.wav`, the selected formats are written as:
+
+| Format | Output filename |
+| --- | --- |
+| `json` | `interview01.json` |
+| `txt` | `interview01.txt` |
+| `timestamps` | `interview01_timestamps.txt` |
+| `maxqda` | `interview01_maxqda.txt` |
+| `srt` | `interview01.srt` |
+
+For recursive directory input, the input folder's relative subdirectory structure is preserved below each output directory. This prevents collisions when different subdirectories contain files with the same stem. Top-level directory input without `--recursive` writes all selected files directly into the chosen output directories.
+
+### Model Initialization
+
+Use `init` to download models for both CLI and GUI use:
+
+```powershell
+aTrain-cli init large-v3
+aTrain-cli init speaker-detection
+aTrain-cli init all
+```
+
+Because `transcribe` defaults to `--model large-v3` and `--speaker-detection`, a fresh environment needs both `large-v3` and `speaker-detection` before the default transcription command can run. A model is treated as available when its model directory exists and contains at least one `.bin` file, including nested `.bin` files.
+
+### CLI Examples
+
+Transcribe one file with the default outputs:
+
+```powershell
+aTrain-cli transcribe "D:\media\interview01.wav" --output "D:\transcripts"
+```
+
+Transcribe a folder recursively and write each format to a dedicated directory:
+
+```powershell
+aTrain-cli transcribe "D:\media\interviews" `
+  --recursive `
+  --formats json,txt,timestamps,srt `
+  --json-output "D:\transcripts\json" `
+  --txt-output "D:\transcripts\txt" `
+  --timestamps-output "D:\transcripts\timestamps" `
+  --srt-output "D:\transcripts\srt"
+```
+
+Run CPU-only transcription without speaker detection:
+
+```powershell
+aTrain-cli transcribe "D:\media\interview01.wav" `
+  --device cpu `
+  --compute-type int8 `
+  --no-speaker-detection `
+  --formats txt `
+  --output "D:\transcripts"
+```
+
 ## About aTrain
 
 aTrain offers the following benefits:
