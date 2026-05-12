@@ -201,9 +201,16 @@ def _transcribe_one(
 
     staging_dir = Path(tempfile.mkdtemp(prefix="atrain-cli-"))
     original_transcript_dir = core_outputs.TRANSCRIPT_DIR
+    gpu_log_dir: Path | None = None
+    gpu_log_dir_created = False
     core_outputs.TRANSCRIPT_DIR = str(staging_dir)
     try:
         file, file_id, timestamp = prepare_transcription(item.path)
+        if device == Device.GPU:
+            gpu_log_dir = Path(original_transcript_dir) / file_id
+            if not gpu_log_dir.exists():
+                gpu_log_dir.mkdir(parents=True, exist_ok=True)
+                gpu_log_dir_created = True
         check_inputs_transcribe(str(file), model, language, device)
         settings = Settings(
             file=file,
@@ -229,6 +236,8 @@ def _transcribe_one(
         raise CliTranscriptionError(str(error), staging_dir) from error
     finally:
         core_outputs.TRANSCRIPT_DIR = original_transcript_dir
+        if gpu_log_dir_created and gpu_log_dir is not None:
+            shutil.rmtree(gpu_log_dir, ignore_errors=True)
 
 
 def _run_batch(
