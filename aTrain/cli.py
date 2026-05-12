@@ -33,7 +33,8 @@ FORMAT_OUTPUTS = {
     "maxqda": ("transcription_maxqda.txt", "{stem}_maxqda.txt"),
     "srt": ("transcription.srt", "{stem}.srt"),
 }
-DEFAULT_FORMATS = ",".join(FORMAT_OUTPUTS)
+ALLOWED_FORMATS = ",".join(FORMAT_OUTPUTS)
+DEFAULT_FORMATS = "txt,timestamps"
 
 
 @dataclass(frozen=True)
@@ -319,7 +320,7 @@ def _print_summary(results: list[FileResult], skipped: list[Path]) -> None:
 @cli.command()
 def transcribe(
     input: Annotated[Path, typer.Argument(help="Audio/video file or directory to transcribe.")],
-    model: Annotated[str, typer.Option(help="Whisper model used to transcribe.")] = "large-v3-turbo",
+    model: Annotated[str, typer.Option(help="Whisper model used to transcribe.")] = "large-v3",
     language: Annotated[str, typer.Option(help="Language of the audio.")] = "auto-detect",
     prompt: Annotated[str | None, typer.Option(help="Initial prompt passed to model.")] = None,
     speaker_detection: Annotated[
@@ -328,15 +329,15 @@ def transcribe(
             "--speaker-detection/--no-speaker-detection",
             help="Enable speaker detection.",
         ),
-    ] = False,
+    ] = True,
     speaker_count: Annotated[
         int,
         typer.Option(help="Number of speakers. Use 0 to let aTrain auto-detect."),
     ] = 0,
-    device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.CPU,
+    device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
     compute_type: Annotated[
         ComputeType, typer.Option(help="Data type used in computations.")
-    ] = ComputeType.INT8,
+    ] = ComputeType.FLOAT32,
     temperature: Annotated[
         float | None, typer.Option(help="Temperature used for sampling.", min=0.0, max=1.0)
     ] = None,
@@ -353,7 +354,7 @@ def transcribe(
     ] = False,
     formats: Annotated[
         str,
-        typer.Option(help=f"Comma-separated output formats. Allowed: {DEFAULT_FORMATS}."),
+        typer.Option(help=f"Comma-separated output formats. Allowed: {ALLOWED_FORMATS}."),
     ] = DEFAULT_FORMATS,
     output: Annotated[Path, typer.Option(help="Default output directory.")] = Path(
         "atrain-output"
@@ -365,7 +366,7 @@ def transcribe(
     ] = None,
     maxqda_output: Annotated[Path | None, typer.Option(help="MAXQDA TXT output directory.")] = None,
     srt_output: Annotated[Path | None, typer.Option(help="SRT output directory.")] = None,
-    overwrite: Annotated[bool, typer.Option(help="Overwrite existing output files.")] = False,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing output files.")] = True,
 ):
     """Transcribe a single file or a directory of files."""
     try:
