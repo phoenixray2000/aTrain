@@ -370,19 +370,19 @@ def transcribe(
     prompt: Annotated[str | None, typer.Option(help="Initial prompt passed to model.")] = None,
     prompt_file: Annotated[
         Path | None,
-        typer.Option(help="UTF-8 text file appended to --prompt."),
+        typer.Option("--prompt-file", help="UTF-8 text file appended to --prompt."),
     ] = None,
     hotwords: Annotated[
         str | None,
-        typer.Option(help="Comma- or newline-separated hot words passed to faster-whisper."),
+        typer.Option("--hotwords", help="Comma- or newline-separated hot words passed to faster-whisper."),
     ] = None,
     hotwords_file: Annotated[
         Path | None,
-        typer.Option(help="UTF-8 file containing comma- or newline-separated hot words."),
+        typer.Option("--hotwords-file", help="UTF-8 file containing comma- or newline-separated hot words."),
     ] = None,
     replace_map: Annotated[
         Path | None,
-        typer.Option(help="JSON/YAML replacement map applied after transcription."),
+        typer.Option("--replace-map", help="JSON/YAML replacement map applied after transcription."),
     ] = None,
     speaker_detection: Annotated[
         bool,

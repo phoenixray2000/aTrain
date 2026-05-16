@@ -67,6 +67,10 @@ aTrain-cli transcribe INPUT [OPTIONS]
 | `--compute-type` | `int8`, `float16`, `float32` | `float32` | Model compute precision. |
 | `--temperature` | float | `None` | Optional sampling temperature, `0.0` to `1.0`. |
 | `--prompt` | string | `None` | Optional initial prompt for Whisper. |
+| `--prompt-file` | file | `None` | UTF-8 text file appended to `--prompt`. |
+| `--hotwords` | string | `None` | Comma- or newline-separated hot words passed to faster-whisper. |
+| `--hotwords-file` | file | `None` | UTF-8 file containing comma- or newline-separated hot words. |
+| `--replace-map` | file | `None` | JSON/YAML replacement map applied after transcription and before output copying. |
 | `--cpu-threads` | integer | `aTrain_core.globals.DEFAULT_CPU_THREADS` | `0` means automatic CPU thread selection. |
 | `--recursive / --no-recursive` | bool | `False` | Applies only when `INPUT` is a directory. |
 | `--formats` | CSV | `txt,timestamps` | Allowed values: `json`, `txt`, `timestamps`, `maxqda`, `srt`. |
@@ -122,6 +126,16 @@ aTrain-cli transcribe "D:\media\interviews" `
   --txt-output "D:\transcripts\txt" `
   --timestamps-output "D:\transcripts\timestamps" `
   --srt-output "D:\transcripts\srt"
+```
+
+Transcribe with upstream-generated vocabulary inputs:
+
+```powershell
+aTrain-cli transcribe "D:\media\meeting.wav" `
+  --prompt-file "D:\context\meeting-prompt.txt" `
+  --hotwords-file "D:\context\meeting-hotwords.txt" `
+  --replace-map "D:\context\meeting-replacements.yml" `
+  --output "D:\transcripts"
 ```
 
 Run CPU-only transcription without speaker detection:
