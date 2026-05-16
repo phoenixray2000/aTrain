@@ -79,6 +79,9 @@ class VocabularyParsingTests(unittest.TestCase):
 
         self.assertEqual(result, {})
 
+    def test_replace_map_is_empty_when_path_is_none(self):
+        self.assertEqual(cli_vocabulary.load_replacements(None), {})
+
     def test_load_replacements_rejects_empty_source_in_mapping(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "replace.yml"
