@@ -65,18 +65,13 @@ Create `D:\Git\aTrain\tests\__init__.py` as an empty file.
 Create `D:\Git\aTrain\tests\test_cli_vocabulary.py` with this content:
 
 ```python
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
-
 from aTrain.cli_vocabulary import (
-    apply_replacements_to_transcript,
     build_prompt,
     build_hotwords,
-    load_replacements,
 )
 
 
@@ -227,6 +222,16 @@ OK
 
 - [ ] **Step 3: Add failing replacement map tests**
 
+First add these imports in `D:\Git\aTrain\tests\test_cli_vocabulary.py`:
+
+```python
+import json
+import yaml
+import aTrain.cli_vocabulary as cli_vocabulary
+```
+
+Do not add future functions to the `from aTrain.cli_vocabulary import (...)` import list.
+
 Append these tests inside `VocabularyParsingTests` in `D:\Git\aTrain\tests\test_cli_vocabulary.py`:
 
 ```python
@@ -238,7 +243,7 @@ Append these tests inside `VocabularyParsingTests` in `D:\Git\aTrain\tests\test_
                 encoding="utf-8",
             )
 
-            result = load_replacements(path)
+            result = cli_vocabulary.load_replacements(path)
 
         self.assertEqual(result, {"欧喷AI": "OpenAI", "黑尔墨斯": "赫尔墨斯"})
 
@@ -253,7 +258,7 @@ Append these tests inside `VocabularyParsingTests` in `D:\Git\aTrain\tests\test_
                 encoding="utf-8",
             )
 
-            result = load_replacements(path)
+            result = cli_vocabulary.load_replacements(path)
 
         self.assertEqual(result, {"where my tokens": "WhereMyTokens"})
 
@@ -270,7 +275,7 @@ Append these tests inside `VocabularyParsingTests` in `D:\Git\aTrain\tests\test_
             ]
         }
 
-        apply_replacements_to_transcript(
+        cli_vocabulary.apply_replacements_to_transcript(
             transcript,
             {"欧喷AI": "OpenAI", "where my tokens": "WhereMyTokens"},
         )
@@ -291,8 +296,10 @@ Run:
 Expected:
 
 ```text
-NameError: name 'load_replacements' is not defined
+AttributeError: module 'aTrain.cli_vocabulary' has no attribute 'load_replacements'
 ```
+
+The first three prompt/hotwords tests should still be collected and run before the replacement tests fail.
 
 - [ ] **Step 5: Implement replacement map loading and transcript normalization**
 
