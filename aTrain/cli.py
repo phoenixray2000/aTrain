@@ -1,3 +1,4 @@
+import json
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,14 @@ from aTrain_core.settings import (
     check_file,
     check_inputs_transcribe,
 )
+from aTrain.cli_vocabulary import (
+    ReplacementMap,
+    apply_replacements_to_transcript,
+    build_hotwords,
+    build_prompt,
+    load_replacements,
+)
+from aTrain.transcription_hotwords import attach_hotwords, patch_core_hotwords
 
 cli = typer.Typer(help="CLI for aTrain.", no_args_is_help=True)
 
@@ -176,6 +185,24 @@ def _copy_outputs(
         shutil.copy2(source_dir / planned.source_name, planned.target_path)
 
 
+def _normalize_staged_outputs(
+    staging_dir: Path,
+    file_id: str,
+    replacements: ReplacementMap,
+    speaker_detection: bool,
+) -> None:
+    if not replacements:
+        return
+
+    from aTrain_core import outputs as core_outputs
+
+    transcript_path = staging_dir / file_id / "transcription.json"
+    with transcript_path.open("r", encoding="utf-8") as handle:
+        transcript = json.load(handle)
+    apply_replacements_to_transcript(transcript, replacements)
+    core_outputs.create_output_files(transcript, speaker_detection, file_id)
+
+
 def _transcribe_one(
     item: InputFile,
     output_plan: list[OutputPlan],
@@ -188,6 +215,8 @@ def _transcribe_one(
     compute_type: ComputeType,
     temperature: float | None,
     prompt: str | None,
+    hotwords: str | None,
+    replacements: ReplacementMap,
     cpu_threads: int,
 ) -> Path:
     for planned in output_plan:
@@ -231,7 +260,10 @@ def _transcribe_one(
             progress={},
             cpu_threads=cpu_threads,
         )
-        transcribe_core(settings)
+        attach_hotwords(settings, hotwords)
+        with patch_core_hotwords(hotwords):
+            transcribe_core(settings)
+        _normalize_staged_outputs(staging_dir, file_id, replacements, speaker_detection)
         _copy_outputs(staging_dir, file_id, output_plan, overwrite)
         shutil.rmtree(staging_dir, ignore_errors=True)
         return staging_dir
@@ -257,6 +289,8 @@ def _run_batch(
     compute_type: ComputeType,
     temperature: float | None,
     prompt: str | None,
+    hotwords: str | None,
+    replacements: ReplacementMap,
     cpu_threads: int,
 ) -> int:
     results: list[FileResult] = []
@@ -280,6 +314,8 @@ def _run_batch(
                 compute_type=compute_type,
                 temperature=temperature,
                 prompt=prompt,
+                hotwords=hotwords,
+                replacements=replacements,
                 cpu_threads=cpu_threads,
             )
             elapsed = int(time.monotonic() - started)
@@ -339,6 +375,22 @@ def transcribe(
     ] = DEFAULT_TRANSCRIPTION_MODEL,
     language: Annotated[str, typer.Option(help="Language of the audio.")] = "auto-detect",
     prompt: Annotated[str | None, typer.Option(help="Initial prompt passed to model.")] = None,
+    prompt_file: Annotated[
+        Path | None,
+        typer.Option(help="UTF-8 text file appended to --prompt."),
+    ] = None,
+    hotwords: Annotated[
+        str | None,
+        typer.Option(help="Comma- or newline-separated hot words passed to faster-whisper."),
+    ] = None,
+    hotwords_file: Annotated[
+        Path | None,
+        typer.Option(help="UTF-8 file containing comma- or newline-separated hot words."),
+    ] = None,
+    replace_map: Annotated[
+        Path | None,
+        typer.Option(help="JSON/YAML replacement map applied after transcription."),
+    ] = None,
     speaker_detection: Annotated[
         bool,
         typer.Option(
@@ -385,6 +437,9 @@ def transcribe(
     """Transcribe a single file or a directory of files."""
     try:
         selected_formats = _parse_formats(formats)
+        prompt_value = build_prompt(prompt, prompt_file)
+        hotwords_value = build_hotwords(hotwords, hotwords_file)
+        replacements = load_replacements(replace_map)
         inputs, skipped = _collect_inputs(input_path, recursive)
         _check_model_downloaded(model)
         if speaker_detection:
@@ -414,7 +469,9 @@ def transcribe(
         device=device,
         compute_type=compute_type,
         temperature=temperature,
-        prompt=prompt,
+        prompt=prompt_value,
+        hotwords=hotwords_value,
+        replacements=replacements,
         cpu_threads=cpu_threads,
     )
     raise typer.Exit(code=exit_code)
