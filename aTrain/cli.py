@@ -12,11 +12,8 @@ import typer
 from aTrain_core.globals import (
     DEFAULT_CPU_THREADS,
     MAX_CPU_THREADS,
-    MODELS_DIR,
-    REQUIRED_MODELS,
-    REQUIRED_MODELS_DIR,
 )
-from aTrain_core.load_resources import download_all_models, get_model, load_model_config_file
+from aTrain_core.load_resources import download_all_models, get_model
 from aTrain_core.settings import (
     ComputeType,
     Device,
@@ -31,7 +28,18 @@ from aTrain.cli_vocabulary import (
     build_prompt,
     load_replacements,
 )
+from aTrain.model_downloads import check_model_downloaded as _check_model_downloaded
 from aTrain.transcription_hotwords import attach_hotwords, patch_core_hotwords
+from aTrain.voiceprint_identification import (
+    patch_core_speaker_capture,
+    read_captured_embeddings,
+)
+from aTrain.voiceprints import (
+    apply_speaker_map_to_transcript,
+    assign_voiceprints,
+    cosine_similarity_matrix,
+    list_voiceprints,
+)
 
 cli = typer.Typer(help="CLI for aTrain.", no_args_is_help=True)
 
@@ -149,19 +157,6 @@ def _build_output_plan(
     return plans
 
 
-def _check_model_downloaded(model: str) -> None:
-    available_models = load_model_config_file()
-    if model not in available_models:
-        raise ValueError(f"Model {model} is not available.")
-
-    models_dir = REQUIRED_MODELS_DIR if model in REQUIRED_MODELS else MODELS_DIR
-    model_path = models_dir / model
-    if not model_path.exists() or not any(model_path.rglob("*.bin")):
-        raise FileNotFoundError(
-            f"Model {model} is not downloaded. Run: aTrain-cli init {model}"
-        )
-
-
 def _copy_outputs(
     staging_dir: Path,
     file_id: str,
@@ -185,13 +180,14 @@ def _copy_outputs(
         shutil.copy2(source_dir / planned.source_name, planned.target_path)
 
 
-def _normalize_staged_outputs(
+def _postprocess_staged_outputs(
     staging_dir: Path,
     file_id: str,
     replacements: ReplacementMap,
     speaker_detection: bool,
+    speaker_map: dict[str, str] | None,
 ) -> None:
-    if not replacements:
+    if not replacements and not speaker_map:
         return
 
     from aTrain_core import outputs as core_outputs
@@ -200,6 +196,8 @@ def _normalize_staged_outputs(
     with transcript_path.open("r", encoding="utf-8") as handle:
         transcript = json.load(handle)
     apply_replacements_to_transcript(transcript, replacements)
+    if speaker_map:
+        apply_speaker_map_to_transcript(transcript, speaker_map)
     core_outputs.create_output_files(transcript, speaker_detection, file_id)
 
 
@@ -217,6 +215,9 @@ def _transcribe_one(
     prompt: str | None,
     hotwords: str | None,
     replacements: ReplacementMap,
+    identify_speakers: bool,
+    voiceprint_threshold: float,
+    voiceprint_margin: float,
     cpu_threads: int,
 ) -> Path:
     for planned in output_plan:
@@ -258,9 +259,28 @@ def _transcribe_one(
             cpu_threads=cpu_threads,
         )
         attach_hotwords(settings, hotwords)
+        capture_speakers = identify_speakers and speaker_detection
         with patch_core_hotwords(hotwords):
-            transcribe_core(settings)
-        _normalize_staged_outputs(staging_dir, file_id, replacements, speaker_detection)
+            if capture_speakers:
+                with patch_core_speaker_capture():
+                    transcribe_core(settings)
+            else:
+                transcribe_core(settings)
+
+        speaker_map = _identify_captured_speakers(
+            staging_dir=staging_dir,
+            file_id=file_id,
+            enabled=capture_speakers,
+            threshold=voiceprint_threshold,
+            margin=voiceprint_margin,
+        )
+        _postprocess_staged_outputs(
+            staging_dir,
+            file_id,
+            replacements,
+            speaker_detection,
+            speaker_map,
+        )
         _copy_outputs(staging_dir, file_id, output_plan, overwrite)
         shutil.rmtree(staging_dir, ignore_errors=True)
         return staging_dir
@@ -270,6 +290,35 @@ def _transcribe_one(
         core_outputs.TRANSCRIPT_DIR = original_transcript_dir
         if gpu_log_dir_created and gpu_log_dir is not None:
             shutil.rmtree(gpu_log_dir, ignore_errors=True)
+
+
+def _identify_captured_speakers(
+    staging_dir: Path,
+    file_id: str,
+    enabled: bool,
+    threshold: float,
+    margin: float,
+) -> dict[str, str] | None:
+    if not enabled:
+        return None
+    captured = read_captured_embeddings(staging_dir, file_id)
+    if captured is None:
+        return None
+
+    labels, embeddings = captured
+    voiceprints = list_voiceprints()
+    if not labels or not voiceprints:
+        return None
+
+    scores = cosine_similarity_matrix(embeddings, voiceprints)
+    speaker_map = assign_voiceprints(
+        scores,
+        labels,
+        [profile.name for profile in voiceprints],
+        threshold,
+        margin,
+    )
+    return speaker_map or None
 
 
 def _run_batch(
@@ -288,6 +337,9 @@ def _run_batch(
     prompt: str | None,
     hotwords: str | None,
     replacements: ReplacementMap,
+    identify_speakers: bool,
+    voiceprint_threshold: float,
+    voiceprint_margin: float,
     cpu_threads: int,
 ) -> int:
     results: list[FileResult] = []
@@ -313,6 +365,9 @@ def _run_batch(
                 prompt=prompt,
                 hotwords=hotwords,
                 replacements=replacements,
+                identify_speakers=identify_speakers,
+                voiceprint_threshold=voiceprint_threshold,
+                voiceprint_margin=voiceprint_margin,
                 cpu_threads=cpu_threads,
             )
             elapsed = int(time.monotonic() - started)
@@ -395,6 +450,31 @@ def transcribe(
         int,
         typer.Option(help="Number of speakers. Use 0 to let aTrain auto-detect."),
     ] = 0,
+    identify_speakers: Annotated[
+        bool,
+        typer.Option(
+            "--identify-speakers/--no-identify-speakers",
+            help="Rename diarized SPEAKER_xx labels using enrolled voiceprints.",
+        ),
+    ] = True,
+    voiceprint_threshold: Annotated[
+        float,
+        typer.Option(
+            "--voiceprint-threshold",
+            help="Minimum cosine similarity required for voiceprint identification.",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.5,
+    voiceprint_margin: Annotated[
+        float,
+        typer.Option(
+            "--voiceprint-margin",
+            help="Minimum score gap over competing speaker/name assignments.",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.05,
     device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
     compute_type: Annotated[
         ComputeType, typer.Option(help="Data type used in computations.")
@@ -435,6 +515,8 @@ def transcribe(
         prompt_value = build_prompt(prompt, prompt_file)
         hotwords_value = build_hotwords(hotwords, hotwords_file)
         replacements = load_replacements(replace_map)
+        if identify_speakers and not speaker_detection:
+            raise ValueError("--identify-speakers requires --speaker-detection.")
         inputs, skipped = _collect_inputs(input, recursive)
         _check_model_downloaded(model)
         if speaker_detection:
@@ -467,6 +549,9 @@ def transcribe(
         prompt=prompt_value,
         hotwords=hotwords_value,
         replacements=replacements,
+        identify_speakers=identify_speakers,
+        voiceprint_threshold=voiceprint_threshold,
+        voiceprint_margin=voiceprint_margin,
         cpu_threads=cpu_threads,
     )
     raise typer.Exit(code=exit_code)

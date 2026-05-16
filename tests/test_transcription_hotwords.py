@@ -97,7 +97,7 @@ class HotwordsPatchTests(unittest.TestCase):
                 return_value={"base": {"type": "standard"}},
             ),
             mock.patch(
-                "aTrain.transcription_hotwords.transcription_with_progress_bar",
+                "aTrain.transcription_hotwords._transcription_with_progress_bar",
                 return_value=[segment],
             ),
             mock.patch(

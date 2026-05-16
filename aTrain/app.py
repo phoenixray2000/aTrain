@@ -13,7 +13,7 @@ from wakepy import keep
 with patch.dict(os.environ, NICEGUI_STORAGE_PATH=str(ATRAIN_DIR / "settings")):
     from nicegui import ui
 
-    from aTrain.pages import about, archive, faq, models, transcribe  # noqa
+    from aTrain.pages import about, archive, faq, models, transcribe, voiceprints  # noqa
 
 cli = Typer(help="CLI for aTrain.")
 

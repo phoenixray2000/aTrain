@@ -10,7 +10,6 @@ from faster_whisper import WhisperModel
 from aTrain_core.load_resources import load_model_config_file
 from aTrain_core.outputs import named_tuple_to_dict, write_logfile
 from aTrain_core.settings import Device, Settings
-from aTrain_core.transcribe import transcription_with_progress_bar
 
 
 def attach_hotwords(settings: Settings, hotwords: str | None) -> None:
@@ -53,7 +52,7 @@ def run_transcription_with_hotwords(
             else settings.temperature,
             hotwords=getattr(settings, "hotwords", None),
         )
-        segments = transcription_with_progress_bar(segments, info, settings.progress)
+        segments = _transcription_with_progress_bar(segments, info, settings.progress)
         transcript = {"segments": [named_tuple_to_dict(s) for s in segments]}
         write_logfile("Transcription successful", settings.file_id)
         if settings.device == Device.CPU:
@@ -84,3 +83,9 @@ def patch_core_hotwords(hotwords: str | None) -> Iterator[None]:
         yield
     finally:
         core_transcribe.run_transcription = original
+
+
+def _transcription_with_progress_bar(segments, info, progress):
+    from aTrain_core.transcribe import transcription_with_progress_bar
+
+    return transcription_with_progress_bar(segments, info, progress)

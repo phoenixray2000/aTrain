@@ -63,6 +63,9 @@ aTrain-cli transcribe INPUT [OPTIONS]
 | `--language` | string | `auto-detect` | Language code or `auto-detect`. |
 | `--speaker-detection / --no-speaker-detection` | bool | `True` | Enables pyannote speaker detection. |
 | `--speaker-count` | integer | `0` | `0` means auto-detect speaker count. |
+| `--identify-speakers / --no-identify-speakers` | bool | `True` | Renames diarized `SPEAKER_xx` labels with enrolled voiceprints. Requires `--speaker-detection`; no-ops when no voiceprints are enrolled. |
+| `--voiceprint-threshold` | float | `0.5` | Minimum cosine similarity required for a voiceprint match. |
+| `--voiceprint-margin` | float | `0.05` | Minimum score gap over competing speaker/name assignments. |
 | `--device` | `cpu`, `gpu` | `gpu` | Hardware backend. |
 | `--compute-type` | `int8`, `float16`, `float32` | `float32` | Model compute precision. |
 | `--temperature` | float | `None` | Optional sampling temperature, `0.0` to `1.0`. |
@@ -108,6 +111,12 @@ aTrain-cli init all
 
 Because `transcribe` defaults to `--model large-v3` and `--speaker-detection`, a fresh environment needs both `large-v3` and `speaker-detection` before the default transcription command can run. A model is treated as available when its model directory exists and contains at least one `.bin` file, including nested `.bin` files.
 
+### Speaker Voiceprints
+
+The GUI provides a `Voiceprints` page for enrolling and managing persistent speaker profiles. Each profile is stored as a JSON file below the local aTrain data directory's `voiceprints` folder. Enrollment uses the local `speaker-detection/embedding` model; it does not upload reference audio.
+
+The CLI does not create or delete voiceprints. It only consumes profiles already enrolled by the GUI when `aTrain-cli transcribe` runs with the default `--identify-speakers` setting. If a diarized speaker matches an enrolled profile above `--voiceprint-threshold` and above the competing-match `--voiceprint-margin`, output speaker fields are rewritten from labels such as `SPEAKER_00` to the enrolled name. Low-confidence speakers remain unchanged.
+
 ### CLI Examples
 
 Transcribe one file with the default outputs:
@@ -135,6 +144,18 @@ aTrain-cli transcribe "D:\media\meeting.wav" `
   --prompt-file "D:\context\meeting-prompt.txt" `
   --hotwords-file "D:\context\meeting-hotwords.txt" `
   --replace-map "D:\context\meeting-replacements.yml" `
+  --output "D:\transcripts"
+```
+
+Transcribe with enrolled voiceprints enabled explicitly:
+
+```powershell
+aTrain-cli transcribe "D:\media\meeting.wav" `
+  --speaker-detection `
+  --identify-speakers `
+  --voiceprint-threshold 0.5 `
+  --voiceprint-margin 0.05 `
+  --formats json,txt `
   --output "D:\transcripts"
 ```
 
