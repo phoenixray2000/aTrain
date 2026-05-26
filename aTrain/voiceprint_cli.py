@@ -5,8 +5,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from aTrain_core.load_resources import get_model
+from aTrain_core.settings import Device
 
+from aTrain.model_downloads import check_model_downloaded
 from aTrain.voiceprint_identification import extract_embedding
 from aTrain.voiceprints import (
     EMBEDDING_MODEL_ID,
@@ -42,6 +45,20 @@ def read_embedding_file(path: Path) -> tuple[list[str], np.ndarray]:
     if embeddings.ndim != 2 or len(labels) != embeddings.shape[0]:
         raise ValueError("Speaker embedding file is invalid: labels and embeddings do not match.")
     return labels, embeddings
+
+
+def _resolve_embedding_device(device) -> torch.device:
+    if isinstance(device, torch.device):
+        return device
+
+    value = str(device).lower()
+    if value in {Device.GPU.value, "gpu", "cuda"}:
+        if not torch.cuda.is_available():
+            raise ValueError("GPU is not available. Please choose CPU instead.")
+        return torch.device("cuda")
+    if value in {Device.CPU.value, "cpu"}:
+        return torch.device("cpu")
+    raise ValueError(f"Unsupported voiceprint enrollment device: {device}")
 
 
 def _save_new_or_update(
@@ -85,8 +102,15 @@ def enroll_voiceprint_from_audio(
     device,
     min_duration_sec: float = 3.0,
 ) -> VoiceprintProfile:
+    check_model_downloaded("speaker-detection")
+    embedding_device = _resolve_embedding_device(device)
     model_path = get_model("speaker-detection")
-    embedding = extract_embedding(audio_path, model_path, device, min_duration_sec=min_duration_sec)
+    embedding = extract_embedding(
+        audio_path,
+        model_path,
+        embedding_device,
+        min_duration_sec=min_duration_sec,
+    )
     return _save_new_or_update(
         name,
         embedding,

@@ -187,11 +187,17 @@ def _copy_outputs(
         shutil.copy2(source_dir / planned.source_name, planned.target_path)
 
 
-def _copy_speaker_embeddings(staging_dir: Path, file_id: str, output_path: Path) -> Path:
+def _copy_speaker_embeddings(
+    staging_dir: Path, file_id: str, output_path: Path, overwrite: bool = True
+) -> Path:
     source = staging_dir / file_id / CAPTURE_FILENAME
     if not source.exists():
         raise FileNotFoundError(
             "Speaker embeddings were not captured. Use --speaker-detection and --identify-speakers."
+        )
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target file exists: {output_path}. Use --overwrite to replace it."
         )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, output_path)
@@ -244,6 +250,10 @@ def _transcribe_one(
             raise FileExistsError(
                 f"Target file exists: {planned.target_path}. Use --overwrite to replace it."
             )
+    if speaker_embeddings_output is not None and speaker_embeddings_output.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target file exists: {speaker_embeddings_output}. Use --overwrite to replace it."
+        )
 
     from aTrain_core import outputs as core_outputs
     from aTrain_core.transcribe import prepare_transcription, transcribe as transcribe_core
@@ -296,7 +306,9 @@ def _transcribe_one(
             margin=voiceprint_margin,
         )
         if speaker_embeddings_output is not None:
-            _copy_speaker_embeddings(staging_dir, file_id, speaker_embeddings_output)
+            _copy_speaker_embeddings(
+                staging_dir, file_id, speaker_embeddings_output, overwrite=overwrite
+            )
         _postprocess_staged_outputs(
             staging_dir,
             file_id,

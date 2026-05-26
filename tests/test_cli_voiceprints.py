@@ -158,3 +158,22 @@ class CliVoiceprintTests(unittest.TestCase):
 
             with self.assertRaisesRegex(FileNotFoundError, "Speaker embeddings were not captured"):
                 cli_module._copy_speaker_embeddings(staging_dir, "file-id", root / "exported.npz")
+
+    def test_copy_speaker_embeddings_respects_no_overwrite(self):
+        from aTrain import cli as cli_module
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            staging_dir = root / "staging"
+            file_dir = staging_dir / "file-id"
+            file_dir.mkdir(parents=True)
+            (file_dir / "_speaker_embeddings.npz").write_bytes(b"new-data")
+            output_path = root / "exported.npz"
+            output_path.write_bytes(b"old-data")
+
+            with self.assertRaisesRegex(FileExistsError, "Target file exists"):
+                cli_module._copy_speaker_embeddings(
+                    staging_dir, "file-id", output_path, overwrite=False
+                )
+
+            self.assertEqual(output_path.read_bytes(), b"old-data")
