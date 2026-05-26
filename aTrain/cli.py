@@ -1,3 +1,4 @@
+import json
 import shutil
 import sys
 import tempfile
@@ -28,6 +29,7 @@ from aTrain.voiceprint_cli import (
     enroll_voiceprint_from_speaker_embedding,
 )
 from aTrain.voiceprint_identification import (
+    CAPTURE_FILENAME,
     patch_core_speaker_capture,
     read_captured_embeddings,
 )
@@ -192,6 +194,41 @@ def _copy_outputs(
         shutil.copy2(source_dir / planned.source_name, planned.target_path)
 
 
+def _copy_speaker_embeddings(
+    staging_dir: Path, file_id: str, output_path: Path, overwrite: bool = True
+) -> Path:
+    source = staging_dir / file_id / CAPTURE_FILENAME
+    if not source.exists():
+        raise FileNotFoundError(
+            "Speaker embeddings were not captured. Use --speaker-detection and --identify-speakers."
+        )
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target file exists: {output_path}. Use --overwrite to replace it."
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, output_path)
+    return output_path
+
+
+def _postprocess_staged_outputs(
+    staging_dir: Path,
+    file_id: str,
+    speaker_detection: bool,
+    speaker_map: dict[str, str] | None,
+) -> None:
+    if not speaker_map:
+        return
+
+    from aTrain_core import outputs as core_outputs
+
+    transcript_path = staging_dir / file_id / "transcription.json"
+    with transcript_path.open("r", encoding="utf-8") as handle:
+        transcript = json.load(handle)
+    apply_speaker_map_to_transcript(transcript, speaker_map)
+    core_outputs.create_output_files(transcript, speaker_detection, file_id)
+
+
 def _transcribe_one(
     item: InputFile,
     output_plan: list[OutputPlan],
@@ -204,6 +241,10 @@ def _transcribe_one(
     compute_type: ComputeType,
     temperature: float | None,
     prompt: str | None,
+    identify_speakers: bool,
+    voiceprint_threshold: float,
+    voiceprint_margin: float,
+    speaker_embeddings_output: Path | None,
     cpu_threads: int,
 ) -> Path:
     for planned in output_plan:
@@ -211,6 +252,10 @@ def _transcribe_one(
             raise FileExistsError(
                 f"Target file exists: {planned.target_path}. Use --overwrite to replace it."
             )
+    if speaker_embeddings_output is not None and speaker_embeddings_output.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target file exists: {speaker_embeddings_output}. Use --overwrite to replace it."
+        )
 
     from aTrain_core import outputs as core_outputs
     from aTrain_core.transcribe import prepare_transcription
@@ -247,7 +292,30 @@ def _transcribe_one(
             progress={},
             cpu_threads=cpu_threads,
         )
-        transcribe_core(settings)
+        capture_speakers = identify_speakers and speaker_detection
+        if capture_speakers:
+            with patch_core_speaker_capture():
+                transcribe_core(settings)
+        else:
+            transcribe_core(settings)
+
+        speaker_map = _identify_captured_speakers(
+            staging_dir=staging_dir,
+            file_id=file_id,
+            enabled=capture_speakers,
+            threshold=voiceprint_threshold,
+            margin=voiceprint_margin,
+        )
+        if speaker_embeddings_output is not None:
+            _copy_speaker_embeddings(
+                staging_dir, file_id, speaker_embeddings_output, overwrite=overwrite
+            )
+        _postprocess_staged_outputs(
+            staging_dir,
+            file_id,
+            speaker_detection,
+            speaker_map,
+        )
         _copy_outputs(staging_dir, file_id, output_plan, overwrite)
         shutil.rmtree(staging_dir, ignore_errors=True)
         return staging_dir
@@ -257,6 +325,35 @@ def _transcribe_one(
         core_outputs.TRANSCRIPT_DIR = original_transcript_dir
         if gpu_log_dir_created and gpu_log_dir is not None:
             shutil.rmtree(gpu_log_dir, ignore_errors=True)
+
+
+def _identify_captured_speakers(
+    staging_dir: Path,
+    file_id: str,
+    enabled: bool,
+    threshold: float,
+    margin: float,
+) -> dict[str, str] | None:
+    if not enabled:
+        return None
+    captured = read_captured_embeddings(staging_dir, file_id)
+    if captured is None:
+        return None
+
+    labels, embeddings = captured
+    voiceprints = list_voiceprints()
+    if not labels or not voiceprints:
+        return None
+
+    scores = cosine_similarity_matrix(embeddings, voiceprints)
+    speaker_map = assign_voiceprints(
+        scores,
+        labels,
+        [profile.name for profile in voiceprints],
+        threshold,
+        margin,
+    )
+    return speaker_map or None
 
 
 def _run_batch(
@@ -273,6 +370,10 @@ def _run_batch(
     compute_type: ComputeType,
     temperature: float | None,
     prompt: str | None,
+    identify_speakers: bool,
+    voiceprint_threshold: float,
+    voiceprint_margin: float,
+    speaker_embeddings_output: Path | None,
     cpu_threads: int,
 ) -> int:
     results: list[FileResult] = []
@@ -296,6 +397,10 @@ def _run_batch(
                 compute_type=compute_type,
                 temperature=temperature,
                 prompt=prompt,
+                identify_speakers=identify_speakers,
+                voiceprint_threshold=voiceprint_threshold,
+                voiceprint_margin=voiceprint_margin,
+                speaker_embeddings_output=speaker_embeddings_output,
                 cpu_threads=cpu_threads,
             )
             elapsed = int(time.monotonic() - started)
@@ -427,6 +532,35 @@ def transcribe(
         int,
         typer.Option(help="Number of speakers. Use 0 to let aTrain auto-detect."),
     ] = 0,
+    identify_speakers: Annotated[
+        bool,
+        typer.Option(
+            "--identify-speakers/--no-identify-speakers",
+            help="Rename diarized SPEAKER_xx labels using enrolled voiceprints.",
+        ),
+    ] = True,
+    voiceprint_threshold: Annotated[
+        float,
+        typer.Option(
+            "--voiceprint-threshold",
+            help="Minimum cosine similarity required for voiceprint identification.",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.5,
+    voiceprint_margin: Annotated[
+        float,
+        typer.Option(
+            "--voiceprint-margin",
+            help="Minimum score gap over competing speaker/name assignments.",
+            min=0.0,
+            max=1.0,
+        ),
+    ] = 0.05,
+    speaker_embeddings_output: Annotated[
+        Path | None,
+        typer.Option("--speaker-embeddings-output", help="Write captured speaker embeddings to this NPZ path."),
+    ] = None,
     device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
     compute_type: Annotated[
         ComputeType, typer.Option(help="Data type used in computations.")
@@ -463,6 +597,14 @@ def transcribe(
     try:
         selected_formats = _parse_formats(formats)
         inputs, skipped = _collect_inputs(input_path, recursive)
+        if identify_speakers and not speaker_detection:
+            raise ValueError("--identify-speakers requires --speaker-detection.")
+        if speaker_embeddings_output is not None and not speaker_detection:
+            raise ValueError("--speaker-embeddings-output requires --speaker-detection.")
+        if speaker_embeddings_output is not None and not identify_speakers:
+            raise ValueError("--speaker-embeddings-output requires --identify-speakers.")
+        if speaker_embeddings_output is not None and len(inputs) != 1:
+            raise ValueError("--speaker-embeddings-output supports single-file input only.")
         _check_model_downloaded(model)
         if speaker_detection:
             _check_model_downloaded("speaker-detection")
@@ -492,6 +634,10 @@ def transcribe(
         compute_type=compute_type,
         temperature=temperature,
         prompt=prompt,
+        identify_speakers=identify_speakers,
+        voiceprint_threshold=voiceprint_threshold,
+        voiceprint_margin=voiceprint_margin,
+        speaker_embeddings_output=speaker_embeddings_output,
         cpu_threads=cpu_threads,
     )
     raise typer.Exit(code=exit_code)
