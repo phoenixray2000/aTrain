@@ -35,6 +35,7 @@ from aTrain.voiceprint_cli import (
     enroll_voiceprint_from_speaker_embedding,
 )
 from aTrain.voiceprint_identification import (
+    CAPTURE_FILENAME,
     patch_core_speaker_capture,
     read_captured_embeddings,
 )
@@ -186,6 +187,17 @@ def _copy_outputs(
         shutil.copy2(source_dir / planned.source_name, planned.target_path)
 
 
+def _copy_speaker_embeddings(staging_dir: Path, file_id: str, output_path: Path) -> Path:
+    source = staging_dir / file_id / CAPTURE_FILENAME
+    if not source.exists():
+        raise FileNotFoundError(
+            "Speaker embeddings were not captured. Use --speaker-detection and --identify-speakers."
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, output_path)
+    return output_path
+
+
 def _postprocess_staged_outputs(
     staging_dir: Path,
     file_id: str,
@@ -224,6 +236,7 @@ def _transcribe_one(
     identify_speakers: bool,
     voiceprint_threshold: float,
     voiceprint_margin: float,
+    speaker_embeddings_output: Path | None,
     cpu_threads: int,
 ) -> Path:
     for planned in output_plan:
@@ -282,6 +295,8 @@ def _transcribe_one(
             threshold=voiceprint_threshold,
             margin=voiceprint_margin,
         )
+        if speaker_embeddings_output is not None:
+            _copy_speaker_embeddings(staging_dir, file_id, speaker_embeddings_output)
         _postprocess_staged_outputs(
             staging_dir,
             file_id,
@@ -348,6 +363,7 @@ def _run_batch(
     identify_speakers: bool,
     voiceprint_threshold: float,
     voiceprint_margin: float,
+    speaker_embeddings_output: Path | None,
     cpu_threads: int,
 ) -> int:
     results: list[FileResult] = []
@@ -376,6 +392,7 @@ def _run_batch(
                 identify_speakers=identify_speakers,
                 voiceprint_threshold=voiceprint_threshold,
                 voiceprint_margin=voiceprint_margin,
+                speaker_embeddings_output=speaker_embeddings_output,
                 cpu_threads=cpu_threads,
             )
             elapsed = int(time.monotonic() - started)
@@ -544,6 +561,10 @@ def transcribe(
             max=1.0,
         ),
     ] = 0.05,
+    speaker_embeddings_output: Annotated[
+        Path | None,
+        typer.Option("--speaker-embeddings-output", help="Write captured speaker embeddings to this NPZ path."),
+    ] = None,
     device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
     compute_type: Annotated[
         ComputeType, typer.Option(help="Data type used in computations.")
@@ -586,6 +607,12 @@ def transcribe(
         replacements = load_replacements(replace_map)
         if identify_speakers and not speaker_detection:
             raise ValueError("--identify-speakers requires --speaker-detection.")
+        if speaker_embeddings_output is not None and not speaker_detection:
+            raise ValueError("--speaker-embeddings-output requires --speaker-detection.")
+        if speaker_embeddings_output is not None and not identify_speakers:
+            raise ValueError("--speaker-embeddings-output requires --identify-speakers.")
+        if speaker_embeddings_output is not None and input.is_dir():
+            raise ValueError("--speaker-embeddings-output currently supports single-file input only.")
         inputs, skipped = _collect_inputs(input, recursive)
         _check_model_downloaded(model)
         if speaker_detection:
@@ -621,6 +648,7 @@ def transcribe(
         identify_speakers=identify_speakers,
         voiceprint_threshold=voiceprint_threshold,
         voiceprint_margin=voiceprint_margin,
+        speaker_embeddings_output=speaker_embeddings_output,
         cpu_threads=cpu_threads,
     )
     raise typer.Exit(code=exit_code)
