@@ -30,6 +30,10 @@ from aTrain.cli_vocabulary import (
 )
 from aTrain.model_downloads import check_model_downloaded as _check_model_downloaded
 from aTrain.transcription_hotwords import attach_hotwords, patch_core_hotwords
+from aTrain.voiceprint_cli import (
+    enroll_voiceprint_from_audio,
+    enroll_voiceprint_from_speaker_embedding,
+)
 from aTrain.voiceprint_identification import (
     patch_core_speaker_capture,
     read_captured_embeddings,
@@ -42,6 +46,8 @@ from aTrain.voiceprints import (
 )
 
 cli = typer.Typer(help="CLI for aTrain.", no_args_is_help=True)
+voiceprint_cli = typer.Typer(help="Manage speaker voiceprints.", no_args_is_help=True)
+cli.add_typer(voiceprint_cli, name="voiceprint")
 
 FORMAT_OUTPUTS = {
     "json": ("transcription.json", "{stem}.json"),
@@ -417,6 +423,67 @@ def _print_summary(results: list[FileResult], skipped: list[Path]) -> None:
         for result in failures:
             staging = f"; staging={result.staging_dir}" if result.staging_dir else ""
             typer.echo(f"  - {result.path} - {result.reason}{staging}", err=True)
+
+
+@voiceprint_cli.command("enroll")
+def voiceprint_enroll(
+    name: Annotated[str, typer.Option("--name", help="Person name for the voiceprint.")],
+    audio: Annotated[
+        Path | None,
+        typer.Option("--audio", help="Audio sample used for enrollment."),
+    ] = None,
+    speaker_embeddings: Annotated[
+        Path | None,
+        typer.Option("--speaker-embeddings", help="NPZ speaker embedding artifact exported by transcribe."),
+    ] = None,
+    speaker: Annotated[
+        str | None,
+        typer.Option("--speaker", help="Speaker label to enroll, such as SPEAKER_01."),
+    ] = None,
+    update: Annotated[
+        bool,
+        typer.Option("--update", help="Merge into an existing profile."),
+    ] = False,
+    source: Annotated[
+        str | None,
+        typer.Option("--source", help="Optional audit source stored with the enrollment."),
+    ] = None,
+    device: Annotated[Device, typer.Option(help="Hardware used for audio embedding extraction.")] = Device.CPU,
+    min_duration_sec: Annotated[
+        float,
+        typer.Option("--min-duration-sec", help="Minimum audio duration accepted for direct audio enrollment.", min=0.1),
+    ] = 3.0,
+):
+    """Create or update a local speaker voiceprint."""
+    try:
+        source_count = int(audio is not None) + int(speaker_embeddings is not None)
+        if source_count != 1:
+            raise ValueError("Provide exactly one of --audio or --speaker-embeddings.")
+        if speaker_embeddings is not None and not speaker:
+            raise ValueError("--speaker is required with --speaker-embeddings.")
+        if audio is not None and speaker:
+            raise ValueError("--speaker can only be used with --speaker-embeddings.")
+        if audio is not None:
+            profile = enroll_voiceprint_from_audio(
+                audio,
+                name,
+                update=update,
+                device=device,
+                min_duration_sec=min_duration_sec,
+            )
+        else:
+            profile = enroll_voiceprint_from_speaker_embedding(
+                speaker_embeddings,
+                speaker,
+                name,
+                update=update,
+                source=source,
+            )
+    except Exception as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+    typer.echo(f"Voiceprint enrolled: {getattr(profile, 'name', name)}")
 
 
 @cli.command()
