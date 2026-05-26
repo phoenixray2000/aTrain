@@ -27,16 +27,93 @@ aTrain-cli.exe --help
 python -m aTrain.cli --help
 ```
 
-The CLI provides two commands:
+The CLI provides these commands:
 
 ```powershell
 aTrain-cli init
 aTrain-cli transcribe INPUT [OPTIONS]
+aTrain-cli voiceprint enroll [OPTIONS]
 ```
 
 `aTrain-cli init` downloads the default transcription model and speaker-detection model used by `transcribe`. `INPUT` can be a single audio/video file or a directory. Directory input scans only the top-level directory by default; pass `--recursive` to include subdirectories. Outputs are copied from a temporary transcription workspace into the selected output directory. Existing output files are kept by default; pass `--overwrite` to replace them.
 
-Example:
+| Option | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `--model` | string | `large-v3` | Whisper model name. |
+| `--language` | string | `auto-detect` | Language code or `auto-detect`. |
+| `--speaker-detection / --no-speaker-detection` | bool | `True` | Enables pyannote speaker detection. |
+| `--speaker-count` | integer | `0` | `0` means auto-detect speaker count. |
+| `--identify-speakers / --no-identify-speakers` | bool | `True` | Renames diarized `SPEAKER_xx` labels with enrolled voiceprints. Requires `--speaker-detection`; no-ops when no voiceprints are enrolled. |
+| `--voiceprint-threshold` | float | `0.5` | Minimum cosine similarity required for a voiceprint match. |
+| `--voiceprint-margin` | float | `0.05` | Minimum score gap over competing speaker/name assignments. |
+| `--speaker-embeddings-output` | file | `None` | Writes captured per-speaker embeddings to an `.npz` file. Requires `--speaker-detection` and `--identify-speakers`; single-file input only. |
+| `--device` | `cpu`, `gpu` | `gpu` | Hardware backend. |
+| `--compute-type` | `int8`, `float16`, `float32` | `float32` | Model compute precision. |
+| `--temperature` | float | `None` | Optional sampling temperature, `0.0` to `1.0`. |
+| `--prompt` | string | `None` | Optional initial prompt for Whisper. |
+| `--cpu-threads` | integer | `aTrain_core.globals.DEFAULT_CPU_THREADS` | `0` means automatic CPU thread selection. |
+| `--recursive / --no-recursive` | bool | `False` | Applies only when `INPUT` is a directory. |
+| `--formats` | CSV | `txt,timestamps` | Allowed values: `json`, `txt`, `timestamps`, `maxqda`, `srt`. |
+| `--output` | directory | `./atrain-output` | Fallback output directory for all selected formats. |
+| `--json-output` | directory | fallback to `--output` | Dedicated directory for JSON output. |
+| `--txt-output` | directory | fallback to `--output` | Dedicated directory for plain text output. |
+| `--timestamps-output` | directory | fallback to `--output` | Dedicated directory for timestamped text output. |
+| `--maxqda-output` | directory | fallback to `--output` | Dedicated directory for MAXQDA output. |
+| `--srt-output` | directory | fallback to `--output` | Dedicated directory for SRT output. |
+| `--overwrite / --no-overwrite` | bool | `False` | Existing target files are kept by default; use `--overwrite` to replace them. |
+
+### Output Contract
+
+Output filenames are derived from the input file stem. For an input file named `interview01.wav`, the selected formats are written as:
+
+| Format | Output filename |
+| --- | --- |
+| `json` | `interview01.json` |
+| `txt` | `interview01.txt` |
+| `timestamps` | `interview01_timestamps.txt` |
+| `maxqda` | `interview01_maxqda.txt` |
+| `srt` | `interview01.srt` |
+
+For recursive directory input, the input folder's relative subdirectory structure is preserved below each output directory. This prevents collisions when different subdirectories contain files with the same stem. Top-level directory input without `--recursive` writes all selected files directly into the chosen output directories.
+
+### Model Initialization
+
+Use `init` to download models for both CLI and GUI use:
+
+```powershell
+aTrain-cli init large-v3
+aTrain-cli init speaker-detection
+aTrain-cli init all
+```
+
+Because `transcribe` defaults to `--model large-v3` and `--speaker-detection`, a fresh environment needs both `large-v3` and `speaker-detection` before the default transcription command can run. A model is treated as available when its model directory exists and contains at least one `.bin` file, including nested `.bin` files.
+
+### Speaker Voiceprints
+
+The GUI provides a `Voiceprints` page for enrolling and managing persistent speaker profiles. Each profile is stored as a JSON file below the local aTrain data directory's `voiceprints` folder. Enrollment uses the local `speaker-detection/embedding` model; it does not upload reference audio.
+
+### CLI voiceprint enrollment
+
+The CLI can create or update local voiceprint profiles. Profiles are stored in the same local voiceprint directory used by the GUI, and `transcribe --identify-speakers` consumes those profiles during later transcription runs.
+
+Enroll from a direct audio sample:
+
+```powershell
+aTrain-cli voiceprint enroll --name "李想" --audio "D:\samples\li-xiang.wav" --update
+```
+
+Enroll from a captured speaker embedding exported during transcription:
+
+```powershell
+aTrain-cli transcribe "D:\input\meeting.wav" --speaker-detection --identify-speakers --speaker-embeddings-output "D:\out\meeting.speaker-embeddings.npz"
+aTrain-cli voiceprint enroll --name "李想" --speaker-embeddings "D:\out\meeting.speaker-embeddings.npz" --speaker SPEAKER_01 --update
+```
+
+If a diarized speaker matches an enrolled profile above `--voiceprint-threshold` and above the competing-match `--voiceprint-margin`, output speaker fields are rewritten from labels such as `SPEAKER_00` to the enrolled name. Low-confidence matches remain as `SPEAKER_xx`; tune `--voiceprint-threshold` and `--voiceprint-margin` when needed.
+
+### CLI Examples
+
+Transcribe one file with the default outputs:
 
 ```powershell
 aTrain-cli transcribe "D:\media\interview01.wav" --output "D:\transcripts"
