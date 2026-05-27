@@ -150,9 +150,7 @@ def _check_model_downloaded(model: str) -> None:
     models_dir = REQUIRED_MODELS_DIR if model in REQUIRED_MODELS else MODELS_DIR
     model_path = models_dir / model
     if not model_path.exists() or not any(model_path.rglob("*.bin")):
-        raise FileNotFoundError(
-            f"Model {model} is not downloaded. Run: aTrain-cli init {model}"
-        )
+        raise FileNotFoundError(f"Model {model} is not downloaded. Run: aTrain-cli init {model}")
 
 
 def _copy_outputs(
@@ -199,7 +197,8 @@ def _transcribe_one(
             )
 
     from aTrain_core import outputs as core_outputs
-    from aTrain_core.transcribe import prepare_transcription, transcribe as transcribe_core
+    from aTrain_core.transcribe import prepare_transcription
+    from aTrain_core.transcribe import transcribe as transcribe_core
 
     staging_dir = Path(tempfile.mkdtemp(prefix="atrain-cli-"))
     original_transcript_dir = core_outputs.TRANSCRIPT_DIR
@@ -332,7 +331,9 @@ def _print_summary(results: list[FileResult], skipped: list[Path]) -> None:
 
 @cli.command()
 def transcribe(
-    input: Annotated[Path, typer.Argument(help="Audio/video file or directory to transcribe.")],
+    input_path: Annotated[
+        Path, typer.Argument(help="Audio/video file or directory to transcribe.", metavar="INPUT")
+    ],
     model: Annotated[
         str, typer.Option(help="Whisper model used to transcribe.")
     ] = DEFAULT_TRANSCRIPTION_MODEL,
@@ -371,9 +372,7 @@ def transcribe(
         str,
         typer.Option(help=f"Comma-separated output formats. Allowed: {ALLOWED_FORMATS}."),
     ] = DEFAULT_FORMATS,
-    output: Annotated[Path, typer.Option(help="Default output directory.")] = Path(
-        "atrain-output"
-    ),
+    output: Annotated[Path, typer.Option(help="Default output directory.")] = Path("atrain-output"),
     json_output: Annotated[Path | None, typer.Option(help="JSON output directory.")] = None,
     txt_output: Annotated[Path | None, typer.Option(help="Plain TXT output directory.")] = None,
     timestamps_output: Annotated[
@@ -386,7 +385,7 @@ def transcribe(
     """Transcribe a single file or a directory of files."""
     try:
         selected_formats = _parse_formats(formats)
-        inputs, skipped = _collect_inputs(input, recursive)
+        inputs, skipped = _collect_inputs(input_path, recursive)
         _check_model_downloaded(model)
         if speaker_detection:
             _check_model_downloaded("speaker-detection")

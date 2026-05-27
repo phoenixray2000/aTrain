@@ -4,8 +4,6 @@ from inspect import signature
 from pathlib import Path
 from unittest import mock
 
-from typer.testing import CliRunner
-
 from aTrain.cli import (
     DEFAULT_INIT_MODELS,
     InputFile,
@@ -16,6 +14,7 @@ from aTrain.cli import (
     transcribe,
 )
 from aTrain_core.settings import ComputeType, Device
+from typer.testing import CliRunner
 
 
 class CliPathTests(unittest.TestCase):
@@ -34,7 +33,9 @@ class CliPathTests(unittest.TestCase):
 
             with (
                 mock.patch("aTrain.cli.check_inputs_transcribe", side_effect=assert_original_path),
-                mock.patch("aTrain_core.transcribe.transcribe", side_effect=assert_original_settings),
+                mock.patch(
+                    "aTrain_core.transcribe.transcribe", side_effect=assert_original_settings
+                ),
             ):
                 _transcribe_one(
                     item=item,
