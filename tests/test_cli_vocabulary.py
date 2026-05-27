@@ -2,9 +2,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import aTrain.cli_vocabulary as cli_vocabulary
 import yaml
+from aTrain.cli import _normalize_staged_outputs
 from aTrain.cli_vocabulary import (
     build_hotwords,
     build_prompt,
@@ -235,3 +237,44 @@ class VocabularyParsingTests(unittest.TestCase):
         self.assertEqual(transcript["segments"][0]["text"], "我们讨论OpenAI和WhereMyTokens")
         self.assertEqual(transcript["segments"][0]["words"][0]["word"], "OpenAI")
         self.assertEqual(transcript["segments"][0]["words"][1]["word"], "WhereMyTokens")
+
+    def test_normalize_staged_outputs_applies_replacements_before_recreating_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            staging_dir = Path(temp_dir)
+            transcript_dir = staging_dir / "file-id"
+            transcript_dir.mkdir()
+            (transcript_dir / "transcription.json").write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "text": "我们讨论欧喷AI",
+                                "words": [{"word": "欧喷AI"}],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            captured = {}
+
+            def capture_output_files(transcript, speaker_detection, file_id):
+                captured["transcript"] = transcript
+                captured["speaker_detection"] = speaker_detection
+                captured["file_id"] = file_id
+
+            with mock.patch(
+                "aTrain_core.outputs.create_output_files", side_effect=capture_output_files
+            ):
+                _normalize_staged_outputs(
+                    staging_dir,
+                    "file-id",
+                    {"欧喷AI": "OpenAI"},
+                    speaker_detection=True,
+                )
+
+        self.assertEqual(captured["transcript"]["segments"][0]["text"], "我们讨论OpenAI")
+        self.assertEqual(captured["transcript"]["segments"][0]["words"][0]["word"], "OpenAI")
+        self.assertIs(captured["speaker_detection"], True)
+        self.assertEqual(captured["file_id"], "file-id")

@@ -69,6 +69,30 @@ class HotwordsPatchTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "transcribe failed"):
                 run_transcription_with_hotwords(settings, Path("model"), object())
 
+    def test_run_transcription_accepts_core_return_dict_keyword_for_gpu_errors(self):
+        settings = self._settings()
+        settings.device = Device.GPU
+        return_dict = {}
+
+        with (
+            mock.patch("aTrain.transcription_hotwords.WhisperModel") as whisper_model,
+            mock.patch(
+                "aTrain.transcription_hotwords.load_model_config_file",
+                return_value={"base": {"type": "standard"}},
+            ),
+            mock.patch("aTrain.transcription_hotwords.write_logfile"),
+        ):
+            whisper = whisper_model.return_value
+            whisper.transcribe.side_effect = RuntimeError("gpu transcribe failed")
+
+            result = run_transcription_with_hotwords(
+                settings, Path("model"), object(), returnDict=return_dict
+            )
+
+        self.assertIsNone(result)
+        self.assertIsInstance(return_dict["error"], RuntimeError)
+        self.assertEqual(str(return_dict["error"]), "gpu transcribe failed")
+
     def _settings(self, hotwords=None):
         settings = types.SimpleNamespace(
             device=Device.CPU,
