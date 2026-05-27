@@ -35,6 +35,8 @@ FORMAT_OUTPUTS = {
 }
 ALLOWED_FORMATS = ",".join(FORMAT_OUTPUTS)
 DEFAULT_FORMATS = "txt,timestamps"
+DEFAULT_TRANSCRIPTION_MODEL = "large-v3"
+DEFAULT_INIT_MODELS = (DEFAULT_TRANSCRIPTION_MODEL, "speaker-detection")
 
 
 @dataclass(frozen=True)
@@ -331,7 +333,9 @@ def _print_summary(results: list[FileResult], skipped: list[Path]) -> None:
 @cli.command()
 def transcribe(
     input: Annotated[Path, typer.Argument(help="Audio/video file or directory to transcribe.")],
-    model: Annotated[str, typer.Option(help="Whisper model used to transcribe.")] = "large-v3",
+    model: Annotated[
+        str, typer.Option(help="Whisper model used to transcribe.")
+    ] = DEFAULT_TRANSCRIPTION_MODEL,
     language: Annotated[str, typer.Option(help="Language of the audio.")] = "auto-detect",
     prompt: Annotated[str | None, typer.Option(help="Initial prompt passed to model.")] = None,
     speaker_detection: Annotated[
@@ -377,7 +381,7 @@ def transcribe(
     ] = None,
     maxqda_output: Annotated[Path | None, typer.Option(help="MAXQDA TXT output directory.")] = None,
     srt_output: Annotated[Path | None, typer.Option(help="SRT output directory.")] = None,
-    overwrite: Annotated[bool, typer.Option(help="Overwrite existing output files.")] = True,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing output files.")] = False,
 ):
     """Transcribe a single file or a directory of files."""
     try:
@@ -420,14 +424,18 @@ def transcribe(
 @cli.command()
 def init(
     model: Annotated[
-        str, typer.Argument(help="Model to download, or 'all'.")
-    ] = "large-v3-turbo",
+        str, typer.Argument(help="Model to download, 'default', or 'all'.")
+    ] = "default",
 ):
     """Download a model for CLI/GUI use."""
     try:
         if model == "all":
             download_all_models()
             typer.echo("All models downloaded")
+        elif model == "default":
+            for model_name in DEFAULT_INIT_MODELS:
+                get_model(model_name)
+            typer.echo("Default CLI models downloaded")
         else:
             get_model(model)
             typer.echo(f"Model {model} downloaded")

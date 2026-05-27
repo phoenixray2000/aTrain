@@ -30,11 +30,11 @@ python -m aTrain.cli --help
 The CLI provides two commands:
 
 ```powershell
-aTrain-cli init large-v3
+aTrain-cli init
 aTrain-cli transcribe INPUT [OPTIONS]
 ```
 
-`INPUT` can be a single audio/video file or a directory. Directory input scans only the top-level directory by default; pass `--recursive` to include subdirectories. Outputs are copied from a temporary transcription workspace into the selected output directory, with `--overwrite/--no-overwrite` controlling existing files.
+`aTrain-cli init` downloads the default transcription model and speaker-detection model used by `transcribe`. `INPUT` can be a single audio/video file or a directory. Directory input scans only the top-level directory by default; pass `--recursive` to include subdirectories. Outputs are copied from a temporary transcription workspace into the selected output directory. Existing output files are kept by default; pass `--overwrite` to replace them.
 
 Example:
 
