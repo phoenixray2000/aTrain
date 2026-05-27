@@ -205,7 +205,9 @@ def _transcribe_one(
     gpu_log_dir_created = False
     core_outputs.TRANSCRIPT_DIR = str(staging_dir)
     try:
-        file, file_id, timestamp = prepare_transcription(item.path)
+        _, file_id, timestamp = prepare_transcription(item.path)
+        # prepare_transcription sanitizes names for file_id; decoding must use the real path.
+        file = item.path
         if device == Device.GPU:
             gpu_log_dir = Path(original_transcript_dir) / file_id
             if not gpu_log_dir.exists():
