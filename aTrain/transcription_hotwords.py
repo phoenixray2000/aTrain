@@ -1,32 +1,30 @@
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from multiprocessing.managers import DictProxy
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
-from faster_whisper import WhisperModel
-
 from aTrain_core.load_resources import load_model_config_file
 from aTrain_core.outputs import named_tuple_to_dict, write_logfile
 from aTrain_core.settings import Device, Settings
 from aTrain_core.transcribe import transcription_with_progress_bar
+from faster_whisper import WhisperModel
 
 
 def attach_hotwords(settings: Settings, hotwords: str | None) -> None:
     if hotwords:
-        setattr(settings, "hotwords", hotwords)
+        settings.hotwords = hotwords
 
 
 def run_transcription_with_hotwords(
     settings: Settings,
     model_path: Path,
     audio_array: np.ndarray,
-    returnDict: DictProxy | dict | None = None,
+    returnDict: DictProxy | dict | None = None,  # noqa: N803 - matches aTrain_core kwarg.
 ) -> dict | None:
     """Run a transcription using a whisper model with optional hotwords."""
-    if returnDict is None:
-        returnDict = {}
+    return_dict = {} if returnDict is None else returnDict
 
     try:
         whisper_model = WhisperModel(
@@ -46,7 +44,7 @@ def run_transcription_with_hotwords(
             language=None if settings.language == "auto-detect" else settings.language,
             max_new_tokens=None if model_type == "distil" else 128,
             no_speech_threshold=0.6,
-            condition_on_previous_text=False if model_type == "distil" else True,
+            condition_on_previous_text=model_type != "distil",
             initial_prompt=settings.initial_prompt,
             temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
             if settings.temperature is None
@@ -58,15 +56,15 @@ def run_transcription_with_hotwords(
         write_logfile("Transcription successful", settings.file_id)
         if settings.device == Device.CPU:
             return transcript
-        elif settings.device == Device.GPU:
-            returnDict["transcript"] = transcript
+        if settings.device == Device.GPU:
+            return_dict["transcript"] = transcript
             os._exit(0)
 
     except Exception as error:
         if settings.device == Device.CPU:
             raise error
-        elif settings.device == Device.GPU:
-            returnDict["error"] = error
+        if settings.device == Device.GPU:
+            return_dict["error"] = error
             return None
 
 

@@ -24,6 +24,7 @@ from aTrain_core.settings import (
     check_file,
     check_inputs_transcribe,
 )
+
 from aTrain.cli_vocabulary import (
     ReplacementMap,
     apply_replacements_to_transcript,
@@ -381,15 +382,21 @@ def transcribe(
     ] = None,
     hotwords: Annotated[
         str | None,
-        typer.Option("--hotwords", help="Comma- or newline-separated hot words passed to faster-whisper."),
+        typer.Option(
+            "--hotwords", help="Comma- or newline-separated hot words passed to faster-whisper."
+        ),
     ] = None,
     hotwords_file: Annotated[
         Path | None,
-        typer.Option("--hotwords-file", help="UTF-8 file containing comma- or newline-separated hot words."),
+        typer.Option(
+            "--hotwords-file", help="UTF-8 file containing comma- or newline-separated hot words."
+        ),
     ] = None,
     replace_map: Annotated[
         Path | None,
-        typer.Option("--replace-map", help="JSON/YAML replacement map applied after transcription."),
+        typer.Option(
+            "--replace-map", help="JSON/YAML replacement map applied after transcription."
+        ),
     ] = None,
     speaker_detection: Annotated[
         bool,

@@ -3,12 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
-
 import aTrain.cli_vocabulary as cli_vocabulary
+import yaml
 from aTrain.cli_vocabulary import (
-    build_prompt,
     build_hotwords,
+    build_prompt,
 )
 
 

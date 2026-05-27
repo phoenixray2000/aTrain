@@ -49,6 +49,8 @@ class CliPathTests(unittest.TestCase):
                     compute_type=ComputeType.FLOAT32,
                     temperature=None,
                     prompt=None,
+                    hotwords=None,
+                    replacements={},
                     cpu_threads=0,
                 )
 

@@ -32,9 +32,8 @@ class HotwordsPatchTests(unittest.TestCase):
         import aTrain_core.transcribe as core_transcribe
 
         original = core_transcribe.run_transcription
-        with self.assertRaises(RuntimeError):
-            with patch_core_hotwords("OpenAI"):
-                raise RuntimeError("boom")
+        with self.assertRaises(RuntimeError), patch_core_hotwords("OpenAI"):
+            raise RuntimeError("boom")
 
         self.assertIs(core_transcribe.run_transcription, original)
 

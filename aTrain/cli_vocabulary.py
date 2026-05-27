@@ -4,7 +4,6 @@ from typing import Any
 
 import yaml
 
-
 ReplacementMap = dict[str, str]
 
 
@@ -112,7 +111,9 @@ def replace_text(text: str, replacements: ReplacementMap) -> str:
     return text
 
 
-def apply_replacements_to_transcript(transcript: dict[str, Any], replacements: ReplacementMap) -> None:
+def apply_replacements_to_transcript(
+    transcript: dict[str, Any], replacements: ReplacementMap
+) -> None:
     if not replacements:
         return
 
