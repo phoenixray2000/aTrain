@@ -96,7 +96,9 @@ def _parse_formats(value: str) -> list[str]:
     invalid = [item for item in parsed if item not in FORMAT_OUTPUTS]
     if invalid:
         allowed = ", ".join(FORMAT_OUTPUTS)
-        raise ValueError(f"Unsupported output format(s): {', '.join(invalid)}. Allowed: {allowed}")
+        raise ValueError(
+            f"Unsupported output format(s): {', '.join(invalid)}. Allowed: {allowed}"
+        )
     return list(dict.fromkeys(parsed))
 
 
@@ -104,7 +106,9 @@ def _is_supported_file(path: Path) -> bool:
     return path.is_file() and check_file(path.name)
 
 
-def _collect_inputs(input_path: Path, recursive: bool) -> tuple[list[InputFile], list[Path]]:
+def _collect_inputs(
+    input_path: Path, recursive: bool
+) -> tuple[list[InputFile], list[Path]]:
     if not input_path.exists():
         raise ValueError(f"Input does not exist: {input_path}")
 
@@ -125,8 +129,12 @@ def _collect_inputs(input_path: Path, recursive: bool) -> tuple[list[InputFile],
         if not _is_supported_file(path):
             skipped.append(path)
             continue
-        relative_dir = path.parent.resolve().relative_to(root) if recursive else Path(".")
-        display_path = relative_dir / path.name if relative_dir != Path(".") else Path(path.name)
+        relative_dir = (
+            path.parent.resolve().relative_to(root) if recursive else Path(".")
+        )
+        display_path = (
+            relative_dir / path.name if relative_dir != Path(".") else Path(path.name)
+        )
         inputs.append(InputFile(path, display_path, relative_dir))
 
     if not inputs:
@@ -250,13 +258,20 @@ def _transcribe_one(
             raise FileExistsError(
                 f"Target file exists: {planned.target_path}. Use --overwrite to replace it."
             )
-    if speaker_embeddings_output is not None and speaker_embeddings_output.exists() and not overwrite:
+    if (
+        speaker_embeddings_output is not None
+        and speaker_embeddings_output.exists()
+        and not overwrite
+    ):
         raise FileExistsError(
             f"Target file exists: {speaker_embeddings_output}. Use --overwrite to replace it."
         )
 
     from aTrain_core import outputs as core_outputs
-    from aTrain_core.transcribe import prepare_transcription, transcribe as transcribe_core
+    from aTrain_core.transcribe import (
+        prepare_transcription,
+        transcribe as transcribe_core,
+    )
 
     staging_dir = Path(tempfile.mkdtemp(prefix="atrain-cli-"))
     original_transcript_dir = core_outputs.TRANSCRIPT_DIR
@@ -419,7 +434,9 @@ def _run_batch(
                 err=True,
             )
             traceback.print_exc(file=sys.stderr)
-            results.append(FileResult(item.path, ok=False, reason=reason, staging_dir=staging_dir))
+            results.append(
+                FileResult(item.path, ok=False, reason=reason, staging_dir=staging_dir)
+            )
 
     succeeded = sum(1 for result in results if result.ok)
     failed = len(results) - succeeded
@@ -456,14 +473,19 @@ def _print_summary(results: list[FileResult], skipped: list[Path]) -> None:
 
 @voiceprint_cli.command("enroll")
 def voiceprint_enroll(
-    name: Annotated[str, typer.Option("--name", help="Person name for the voiceprint.")],
+    name: Annotated[
+        str, typer.Option("--name", help="Person name for the voiceprint.")
+    ],
     audio: Annotated[
         Path | None,
         typer.Option("--audio", help="Audio sample used for enrollment."),
     ] = None,
     speaker_embeddings: Annotated[
         Path | None,
-        typer.Option("--speaker-embeddings", help="NPZ speaker embedding artifact exported by transcribe."),
+        typer.Option(
+            "--speaker-embeddings",
+            help="NPZ speaker embedding artifact exported by transcribe.",
+        ),
     ] = None,
     speaker: Annotated[
         str | None,
@@ -475,12 +497,20 @@ def voiceprint_enroll(
     ] = False,
     source: Annotated[
         str | None,
-        typer.Option("--source", help="Optional audit source stored with the enrollment."),
+        typer.Option(
+            "--source", help="Optional audit source stored with the enrollment."
+        ),
     ] = None,
-    device: Annotated[Device, typer.Option(help="Hardware used for audio embedding extraction.")] = Device.CPU,
+    device: Annotated[
+        Device, typer.Option(help="Hardware used for audio embedding extraction.")
+    ] = Device.CPU,
     min_duration_sec: Annotated[
         float,
-        typer.Option("--min-duration-sec", help="Minimum audio duration accepted for direct audio enrollment.", min=0.1),
+        typer.Option(
+            "--min-duration-sec",
+            help="Minimum audio duration accepted for direct audio enrollment.",
+            min=0.1,
+        ),
     ] = 3.0,
 ):
     """Create or update a local speaker voiceprint."""
@@ -517,25 +547,42 @@ def voiceprint_enroll(
 
 @cli.command()
 def transcribe(
-    input: Annotated[Path, typer.Argument(help="Audio/video file or directory to transcribe.")],
-    model: Annotated[str, typer.Option(help="Whisper model used to transcribe.")] = "large-v3",
-    language: Annotated[str, typer.Option(help="Language of the audio.")] = "auto-detect",
-    prompt: Annotated[str | None, typer.Option(help="Initial prompt passed to model.")] = None,
+    input: Annotated[
+        Path, typer.Argument(help="Audio/video file or directory to transcribe.")
+    ],
+    model: Annotated[
+        str, typer.Option(help="Whisper model used to transcribe.")
+    ] = "large-v3",
+    language: Annotated[
+        str, typer.Option(help="Language of the audio.")
+    ] = "auto-detect",
+    prompt: Annotated[
+        str | None, typer.Option(help="Initial prompt passed to model.")
+    ] = None,
     prompt_file: Annotated[
         Path | None,
         typer.Option("--prompt-file", help="UTF-8 text file appended to --prompt."),
     ] = None,
     hotwords: Annotated[
         str | None,
-        typer.Option("--hotwords", help="Comma- or newline-separated hot words passed to faster-whisper."),
+        typer.Option(
+            "--hotwords",
+            help="Comma- or newline-separated hot words passed to faster-whisper.",
+        ),
     ] = None,
     hotwords_file: Annotated[
         Path | None,
-        typer.Option("--hotwords-file", help="UTF-8 file containing comma- or newline-separated hot words."),
+        typer.Option(
+            "--hotwords-file",
+            help="UTF-8 file containing comma- or newline-separated hot words.",
+        ),
     ] = None,
     replace_map: Annotated[
         Path | None,
-        typer.Option("--replace-map", help="JSON/YAML replacement map applied after transcription."),
+        typer.Option(
+            "--replace-map",
+            help="JSON/YAML replacement map applied after transcription.",
+        ),
     ] = None,
     speaker_detection: Annotated[
         bool,
@@ -575,14 +622,20 @@ def transcribe(
     ] = 0.05,
     speaker_embeddings_output: Annotated[
         Path | None,
-        typer.Option("--speaker-embeddings-output", help="Write captured speaker embeddings to this NPZ path."),
+        typer.Option(
+            "--speaker-embeddings-output",
+            help="Write captured speaker embeddings to this NPZ path.",
+        ),
     ] = None,
-    device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
+    device: Annotated[
+        Device, typer.Option(help="Hardware used to transcribe.")
+    ] = Device.GPU,
     compute_type: Annotated[
         ComputeType, typer.Option(help="Data type used in computations.")
     ] = ComputeType.FLOAT32,
     temperature: Annotated[
-        float | None, typer.Option(help="Temperature used for sampling.", min=0.0, max=1.0)
+        float | None,
+        typer.Option(help="Temperature used for sampling.", min=0.0, max=1.0),
     ] = None,
     cpu_threads: Annotated[
         int,
@@ -597,19 +650,31 @@ def transcribe(
     ] = False,
     formats: Annotated[
         str,
-        typer.Option(help=f"Comma-separated output formats. Allowed: {ALLOWED_FORMATS}."),
+        typer.Option(
+            help=f"Comma-separated output formats. Allowed: {ALLOWED_FORMATS}."
+        ),
     ] = DEFAULT_FORMATS,
     output: Annotated[Path, typer.Option(help="Default output directory.")] = Path(
         "atrain-output"
     ),
-    json_output: Annotated[Path | None, typer.Option(help="JSON output directory.")] = None,
-    txt_output: Annotated[Path | None, typer.Option(help="Plain TXT output directory.")] = None,
+    json_output: Annotated[
+        Path | None, typer.Option(help="JSON output directory.")
+    ] = None,
+    txt_output: Annotated[
+        Path | None, typer.Option(help="Plain TXT output directory.")
+    ] = None,
     timestamps_output: Annotated[
         Path | None, typer.Option(help="Timestamped TXT output directory.")
     ] = None,
-    maxqda_output: Annotated[Path | None, typer.Option(help="MAXQDA TXT output directory.")] = None,
-    srt_output: Annotated[Path | None, typer.Option(help="SRT output directory.")] = None,
-    overwrite: Annotated[bool, typer.Option(help="Overwrite existing output files.")] = True,
+    maxqda_output: Annotated[
+        Path | None, typer.Option(help="MAXQDA TXT output directory.")
+    ] = None,
+    srt_output: Annotated[
+        Path | None, typer.Option(help="SRT output directory.")
+    ] = None,
+    overwrite: Annotated[
+        bool, typer.Option(help="Overwrite existing output files.")
+    ] = True,
 ):
     """Transcribe a single file or a directory of files."""
     try:
@@ -617,14 +682,20 @@ def transcribe(
         prompt_value = build_prompt(prompt, prompt_file)
         hotwords_value = build_hotwords(hotwords, hotwords_file)
         replacements = load_replacements(replace_map)
+        if speaker_embeddings_output is not None and not speaker_detection:
+            raise ValueError(
+                "--speaker-embeddings-output requires --speaker-detection."
+            )
         if identify_speakers and not speaker_detection:
             raise ValueError("--identify-speakers requires --speaker-detection.")
-        if speaker_embeddings_output is not None and not speaker_detection:
-            raise ValueError("--speaker-embeddings-output requires --speaker-detection.")
         if speaker_embeddings_output is not None and not identify_speakers:
-            raise ValueError("--speaker-embeddings-output requires --identify-speakers.")
+            raise ValueError(
+                "--speaker-embeddings-output requires --identify-speakers."
+            )
         if speaker_embeddings_output is not None and input.is_dir():
-            raise ValueError("--speaker-embeddings-output currently supports single-file input only.")
+            raise ValueError(
+                "--speaker-embeddings-output currently supports single-file input only."
+            )
         inputs, skipped = _collect_inputs(input, recursive)
         _check_model_downloaded(model)
         if speaker_detection:

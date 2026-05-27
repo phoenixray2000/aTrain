@@ -43,7 +43,9 @@ def read_embedding_file(path: Path) -> tuple[list[str], np.ndarray]:
         labels = [str(item) for item in payload["labels"].tolist()]
         embeddings = np.asarray(payload["embeddings"], dtype=np.float32)
     if embeddings.ndim != 2 or len(labels) != embeddings.shape[0]:
-        raise ValueError("Speaker embedding file is invalid: labels and embeddings do not match.")
+        raise ValueError(
+            "Speaker embedding file is invalid: labels and embeddings do not match."
+        )
     return labels, embeddings
 
 
@@ -81,8 +83,12 @@ def _save_new_or_update(
         return profile
 
     if not update:
-        raise FileExistsError(f"Voiceprint already exists: {cleaned_name}. Use --update to merge a new sample.")
-    merged = merge_centroid(existing.embedding, vector, max(1, len(existing.enrollments)))
+        raise FileExistsError(
+            f"Voiceprint already exists: {cleaned_name}. Use --update to merge a new sample."
+        )
+    merged = merge_centroid(
+        existing.embedding, vector, max(1, len(existing.enrollments))
+    )
     profile = VoiceprintProfile(
         name=existing.name,
         model_id=existing.model_id,
@@ -134,7 +140,9 @@ def enroll_voiceprint_from_speaker_embedding(
     try:
         index = labels.index(speaker_label)
     except ValueError as error:
-        raise ValueError(f"Speaker label not found in embedding file: {speaker_label}") from error
+        raise ValueError(
+            f"Speaker label not found in embedding file: {speaker_label}"
+        ) from error
     return _save_new_or_update(
         name,
         embeddings[index],
