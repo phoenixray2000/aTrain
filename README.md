@@ -42,8 +42,17 @@ Example:
 aTrain-cli transcribe "D:\media\interview01.wav" --output "D:\transcripts"
 ```
 
-Use `aTrain-cli transcribe --help` for model, language, speaker detection, device, compute type, format, and output-directory options.
+The CLI can also consume external vocabulary context. Use `--prompt-file` to append UTF-8 text to `--prompt`, `--hotwords` or `--hotwords-file` to pass comma- or newline-separated hot words to faster-whisper, and `--replace-map` to apply JSON/YAML transcript replacements after transcription and before output copying.
 
+```powershell
+aTrain-cli transcribe "D:\media\meeting.wav" `
+  --prompt-file "D:\context\meeting-prompt.txt" `
+  --hotwords-file "D:\context\meeting-hotwords.txt" `
+  --replace-map "D:\context\meeting-replacements.yml" `
+  --output "D:\transcripts"
+```
+
+Use `aTrain-cli transcribe --help` for model, language, speaker detection, device, compute type, format, vocabulary, and output-directory options.
 
 ## About aTrain
 
