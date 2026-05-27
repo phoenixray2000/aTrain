@@ -24,6 +24,7 @@ from aTrain_core.settings import (
     check_file,
     check_inputs_transcribe,
 )
+
 from aTrain.voiceprint_cli import (
     enroll_voiceprint_from_audio,
     enroll_voiceprint_from_speaker_embedding,
@@ -203,9 +204,7 @@ def _copy_speaker_embeddings(
             "Speaker embeddings were not captured. Use --speaker-detection and --identify-speakers."
         )
     if output_path.exists() and not overwrite:
-        raise FileExistsError(
-            f"Target file exists: {output_path}. Use --overwrite to replace it."
-        )
+        raise FileExistsError(f"Target file exists: {output_path}. Use --overwrite to replace it.")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, output_path)
     return output_path
@@ -241,18 +240,22 @@ def _transcribe_one(
     compute_type: ComputeType,
     temperature: float | None,
     prompt: str | None,
-    identify_speakers: bool,
-    voiceprint_threshold: float,
-    voiceprint_margin: float,
-    speaker_embeddings_output: Path | None,
-    cpu_threads: int,
+    identify_speakers: bool = True,
+    voiceprint_threshold: float = 0.5,
+    voiceprint_margin: float = 0.05,
+    speaker_embeddings_output: Path | None = None,
+    cpu_threads: int = DEFAULT_CPU_THREADS,
 ) -> Path:
     for planned in output_plan:
         if planned.target_path.exists() and not overwrite:
             raise FileExistsError(
                 f"Target file exists: {planned.target_path}. Use --overwrite to replace it."
             )
-    if speaker_embeddings_output is not None and speaker_embeddings_output.exists() and not overwrite:
+    if (
+        speaker_embeddings_output is not None
+        and speaker_embeddings_output.exists()
+        and not overwrite
+    ):
         raise FileExistsError(
             f"Target file exists: {speaker_embeddings_output}. Use --overwrite to replace it."
         )
@@ -369,12 +372,12 @@ def _run_batch(
     device: Device,
     compute_type: ComputeType,
     temperature: float | None,
-    prompt: str | None,
-    identify_speakers: bool,
-    voiceprint_threshold: float,
-    voiceprint_margin: float,
-    speaker_embeddings_output: Path | None,
-    cpu_threads: int,
+    prompt: str | None = None,
+    identify_speakers: bool = True,
+    voiceprint_threshold: float = 0.5,
+    voiceprint_margin: float = 0.05,
+    speaker_embeddings_output: Path | None = None,
+    cpu_threads: int = DEFAULT_CPU_THREADS,
 ) -> int:
     results: list[FileResult] = []
     total = len(inputs)
@@ -459,7 +462,9 @@ def voiceprint_enroll(
     ] = None,
     speaker_embeddings: Annotated[
         Path | None,
-        typer.Option("--speaker-embeddings", help="NPZ speaker embedding artifact exported by transcribe."),
+        typer.Option(
+            "--speaker-embeddings", help="NPZ speaker embedding artifact exported by transcribe."
+        ),
     ] = None,
     speaker: Annotated[
         str | None,
@@ -473,10 +478,16 @@ def voiceprint_enroll(
         str | None,
         typer.Option("--source", help="Optional audit source stored with the enrollment."),
     ] = None,
-    device: Annotated[Device, typer.Option(help="Hardware used for audio embedding extraction.")] = Device.CPU,
+    device: Annotated[
+        Device, typer.Option(help="Hardware used for audio embedding extraction.")
+    ] = Device.CPU,
     min_duration_sec: Annotated[
         float,
-        typer.Option("--min-duration-sec", help="Minimum audio duration accepted for direct audio enrollment.", min=0.1),
+        typer.Option(
+            "--min-duration-sec",
+            help="Minimum audio duration accepted for direct audio enrollment.",
+            min=0.1,
+        ),
     ] = 3.0,
 ):
     """Create or update a local speaker voiceprint."""
@@ -559,7 +570,10 @@ def transcribe(
     ] = 0.05,
     speaker_embeddings_output: Annotated[
         Path | None,
-        typer.Option("--speaker-embeddings-output", help="Write captured speaker embeddings to this NPZ path."),
+        typer.Option(
+            "--speaker-embeddings-output",
+            help="Write captured speaker embeddings to this NPZ path.",
+        ),
     ] = None,
     device: Annotated[Device, typer.Option(help="Hardware used to transcribe.")] = Device.GPU,
     compute_type: Annotated[
@@ -596,13 +610,13 @@ def transcribe(
     """Transcribe a single file or a directory of files."""
     try:
         selected_formats = _parse_formats(formats)
-        inputs, skipped = _collect_inputs(input_path, recursive)
         if identify_speakers and not speaker_detection:
             raise ValueError("--identify-speakers requires --speaker-detection.")
         if speaker_embeddings_output is not None and not speaker_detection:
             raise ValueError("--speaker-embeddings-output requires --speaker-detection.")
         if speaker_embeddings_output is not None and not identify_speakers:
             raise ValueError("--speaker-embeddings-output requires --identify-speakers.")
+        inputs, skipped = _collect_inputs(input_path, recursive)
         if speaker_embeddings_output is not None and len(inputs) != 1:
             raise ValueError("--speaker-embeddings-output supports single-file input only.")
         _check_model_downloaded(model)

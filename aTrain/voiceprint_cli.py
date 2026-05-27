@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ from aTrain.voiceprints import (
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _normalise_vector(vector: np.ndarray) -> np.ndarray:
@@ -81,7 +81,9 @@ def _save_new_or_update(
         return profile
 
     if not update:
-        raise FileExistsError(f"Voiceprint already exists: {cleaned_name}. Use --update to merge a new sample.")
+        raise FileExistsError(
+            f"Voiceprint already exists: {cleaned_name}. Use --update to merge a new sample."
+        )
     merged = merge_centroid(existing.embedding, vector, max(1, len(existing.enrollments)))
     profile = VoiceprintProfile(
         name=existing.name,

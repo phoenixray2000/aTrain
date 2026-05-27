@@ -3,9 +3,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from typer.testing import CliRunner
-
 from aTrain.cli import cli
+from typer.testing import CliRunner
 
 
 class CliVoiceprintTests(unittest.TestCase):
@@ -65,7 +64,9 @@ class CliVoiceprintTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             embedding_file = Path(temp_dir) / "speakers.npz"
             embedding_file.write_bytes(b"npz-stub")
-            with mock.patch("aTrain.cli.enroll_voiceprint_from_speaker_embedding", side_effect=fake_enroll):
+            with mock.patch(
+                "aTrain.cli.enroll_voiceprint_from_speaker_embedding", side_effect=fake_enroll
+            ):
                 result = runner.invoke(
                     cli,
                     [
