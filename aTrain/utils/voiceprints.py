@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 import traceback
 from datetime import UTC, datetime
@@ -31,7 +32,11 @@ async def enroll_voiceprint(
         suffix = Path(file_event.name).suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             tmp_path = Path(temp_file.name)
-            temp_file.write(file_event.content.read())
+            if isinstance(file_event.content, Path):
+                temp_file.close()
+                shutil.copy2(file_event.content, tmp_path)
+            else:
+                temp_file.write(file_event.content.read())
 
         model_path = get_model("speaker-detection")
         duration_sec = _audio_duration_sec(tmp_path)

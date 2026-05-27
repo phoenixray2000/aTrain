@@ -1,11 +1,12 @@
 from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
 
-from aTrain.components.settings.file import CustomUpload
+from aTrain.components.settings.file import input_file
 from aTrain.utils.voiceprints import enroll_voiceprint, show_voiceprint_error
 from aTrain.voiceprints import validate_voiceprint_name
+from aTrain_core.globals import FLATPAK
 from nicegui import events, ui
-
-VOICEPRINT_AUDIO_ACCEPT = "audio/*,.wav,.mp3,.m4a,.mp4,.flac,.ogg,.webm,.aac,.wma"
 
 
 def enroll_dialog(
@@ -19,17 +20,10 @@ def enroll_dialog(
         name_input = ui.input("Name").classes("w-full")
         name_error = ui.label("").classes("text-negative text-xs")
         update_toggle = ui.checkbox("Update existing voiceprint")
-        uploader = CustomUpload(auto_upload=False).classes("hidden")
-        uploader.props(f"accept='{VOICEPRINT_AUDIO_ACCEPT}'")
 
         with ui.column().classes("gap-2 w-full"):
             ui.label("Reference audio").classes("font-bold text-dark text-sm")
-            with ui.button(color="gray-100") as select_button:
-                select_button.props("text-color=dark align=left unelevated no-caps")
-                select_button.classes("w-full")
-        select_button.bind_text(uploader, "file_text")
-        select_button.bind_icon(uploader, "file_icon")
-        select_button.on_click(uploader.pick_files)
+            uploader = input_file()
 
         ui.label("Use a 10-30s clean clip recorded with a similar microphone.").classes(
             "text-xs text-grey"
@@ -70,8 +64,19 @@ def enroll_dialog(
             processing.close()
             show_voiceprint_error(error)
 
-    def submit() -> None:
+    async def submit() -> None:
         if not validate_form():
+            return
+        if FLATPAK:
+            selected_path = getattr(uploader, "selected_path", None)
+            if not selected_path:
+                ui.notify("Select a reference audio file first", type="warning")
+                return
+            payload = SimpleNamespace(
+                name=getattr(uploader, "selected_name", None) or Path(selected_path).name,
+                content=Path(selected_path),
+            )
+            await handle_upload(payload)
             return
         if getattr(uploader, "file_text", "") != "1 File Added":
             ui.notify("Select a reference audio file first", type="warning")

@@ -102,6 +102,47 @@ class GuiVoiceprintIdentificationTests(unittest.TestCase):
         patch_capture.assert_not_called()
 
 
+class GuiVoiceprintEnrollmentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_enroll_voiceprint_accepts_flatpak_selected_path_content(self):
+        from aTrain.utils.voiceprints import enroll_voiceprint
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "reference.wav"
+            audio_path.write_bytes(b"reference audio")
+            event = types.SimpleNamespace(name="reference.wav", content=audio_path)
+            saved = {}
+
+            async def fake_cpu_bound(_func, **kwargs):
+                copied_path = kwargs["audio_path"]
+                self.assertTrue(copied_path.exists())
+                self.assertEqual(copied_path.read_bytes(), b"reference audio")
+                return np.array([1.0, 0.0], dtype=np.float32)
+
+            with (
+                mock.patch("aTrain.utils.voiceprints.check_model_downloaded"),
+                mock.patch(
+                    "aTrain.utils.voiceprints.get_model", return_value=Path("speaker-detection")
+                ),
+                mock.patch("aTrain.utils.voiceprints._audio_duration_sec", return_value=4.0),
+                mock.patch("aTrain.utils.voiceprints._enrollment_device", return_value=object()),
+                mock.patch("aTrain.utils.voiceprints.run.cpu_bound", side_effect=fake_cpu_bound),
+                mock.patch(
+                    "aTrain.utils.voiceprints.load_voiceprint", side_effect=FileNotFoundError
+                ),
+                mock.patch(
+                    "aTrain.utils.voiceprints.save_voiceprint",
+                    side_effect=lambda profile: saved.setdefault("profile", profile),
+                ),
+            ):
+                await enroll_voiceprint(event, name="Ray", update=False)
+
+        profile = saved["profile"]
+        self.assertEqual(profile.name, "Ray")
+        self.assertEqual(profile.embedding_dim, 2)
+        self.assertTrue(np.allclose(profile.embedding, np.array([1.0, 0.0], dtype=np.float32)))
+        self.assertEqual(profile.enrollments[0]["source"], "reference.wav")
+
+
 class CaptureContext:
     def __init__(self):
         self.entered = False
