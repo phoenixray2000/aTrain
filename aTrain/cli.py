@@ -5,6 +5,7 @@ import tempfile
 import time
 import traceback
 from dataclasses import dataclass
+from multiprocessing import Manager
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +22,7 @@ from aTrain_core.settings import (
     check_file,
     check_inputs_transcribe,
 )
+from aTrain.cli_progress import ProgressHeartbeat
 from aTrain.cli_vocabulary import (
     ReplacementMap,
     apply_replacements_to_transcript,
@@ -252,6 +254,7 @@ def _transcribe_one(
     voiceprint_margin: float,
     speaker_embeddings_output: Path | None,
     cpu_threads: int,
+    progress: bool = True,
 ) -> Path:
     for planned in output_plan:
         if planned.target_path.exists() and not overwrite:
@@ -288,30 +291,51 @@ def _transcribe_one(
                 gpu_log_dir.mkdir(parents=True, exist_ok=True)
                 gpu_log_dir_created = True
         check_inputs_transcribe(str(file), model, language, device)
-        settings = Settings(
-            file=file,
-            file_id=file_id,
-            file_name=file.name,
-            model=model,
-            language=language,
-            speaker_detection=speaker_detection,
-            speaker_count=speaker_count or None,
-            device=device,
-            compute_type=compute_type,
-            timestamp=timestamp,
-            temperature=temperature,
-            initial_prompt=prompt,
-            progress={},
-            cpu_threads=cpu_threads,
-        )
-        attach_hotwords(settings, hotwords)
         capture_speakers = identify_speakers and speaker_detection
-        with patch_core_hotwords(hotwords):
-            if capture_speakers:
-                with patch_core_speaker_capture():
+
+        def run_transcribe(progress_mapping) -> None:
+            # progress_mapping must be the same object aTrain_core mutates. For
+            # the GPU path it is pickled into a child Process, so it has to be a
+            # multiprocessing.Manager().dict() proxy for the parent to observe
+            # updates (a plain dict gives the child a disconnected copy).
+            settings = Settings(
+                file=file,
+                file_id=file_id,
+                file_name=file.name,
+                model=model,
+                language=language,
+                speaker_detection=speaker_detection,
+                speaker_count=speaker_count or None,
+                device=device,
+                compute_type=compute_type,
+                timestamp=timestamp,
+                temperature=temperature,
+                initial_prompt=prompt,
+                progress=progress_mapping,
+                cpu_threads=cpu_threads,
+            )
+            attach_hotwords(settings, hotwords)
+            with patch_core_hotwords(hotwords):
+                if capture_speakers:
+                    with patch_core_speaker_capture():
+                        transcribe_core(settings)
+                else:
                     transcribe_core(settings)
-            else:
-                transcribe_core(settings)
+
+        if progress:
+            # Manager().dict() proxy + a stderr heartbeat thread so a subprocess
+            # parent (collab-runtime) gets a liveness/progress signal on stderr.
+            with Manager() as manager:
+                progress_mapping = manager.dict(
+                    {"task": "", "current": 0.0, "total": 0.0}
+                )
+                with ProgressHeartbeat(
+                    progress_mapping, lambda line: typer.echo(line, err=True)
+                ):
+                    run_transcribe(progress_mapping)
+        else:
+            # Preserve the original behavior exactly: plain dict, no thread.
+            run_transcribe({})
 
         speaker_map = _identify_captured_speakers(
             staging_dir=staging_dir,
@@ -392,6 +416,7 @@ def _run_batch(
     voiceprint_margin: float,
     speaker_embeddings_output: Path | None,
     cpu_threads: int,
+    progress: bool,
 ) -> int:
     results: list[FileResult] = []
     total = len(inputs)
@@ -421,6 +446,7 @@ def _run_batch(
                 voiceprint_margin=voiceprint_margin,
                 speaker_embeddings_output=speaker_embeddings_output,
                 cpu_threads=cpu_threads,
+                progress=progress,
             )
             elapsed = int(time.monotonic() - started)
             typer.echo(f"[{index}/{total}] done: {item.display_path} ({elapsed}s)")
@@ -675,6 +701,16 @@ def transcribe(
     overwrite: Annotated[
         bool, typer.Option(help="Overwrite existing output files.")
     ] = True,
+    progress: Annotated[
+        bool,
+        typer.Option(
+            "--progress/--no-progress",
+            help=(
+                "Emit a periodic progress heartbeat to stderr "
+                "(for liveness/idle-timeout monitoring). Does not affect stdout."
+            ),
+        ),
+    ] = True,
 ):
     """Transcribe a single file or a directory of files."""
     try:
@@ -733,6 +769,7 @@ def transcribe(
         voiceprint_margin=voiceprint_margin,
         speaker_embeddings_output=speaker_embeddings_output,
         cpu_threads=cpu_threads,
+        progress=progress,
     )
     raise typer.Exit(code=exit_code)
 
